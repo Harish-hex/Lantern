@@ -1,0 +1,12 @@
+# Binary
+lantern
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Test artifacts
+test-storage/
