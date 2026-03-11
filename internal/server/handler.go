@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
 
 	"github.com/Harish-hex/Lantern/internal/config"
 	"github.com/Harish-hex/Lantern/internal/protocol"
@@ -18,15 +19,17 @@ type Handler struct {
 	store   *SessionStore
 	storage *StorageManager
 	upload  *Semaphore
+	download *Semaphore
 }
 
 // NewHandler creates a handler wired to shared state.
-func NewHandler(cfg config.Config, store *SessionStore, storage *StorageManager, upload *Semaphore) *Handler {
+func NewHandler(cfg config.Config, store *SessionStore, storage *StorageManager, upload *Semaphore, download *Semaphore) *Handler {
 	return &Handler{
-		cfg:     cfg,
-		store:   store,
-		storage: storage,
-		upload:  upload,
+		cfg:      cfg,
+		store:    store,
+		storage:  storage,
+		upload:   upload,
+		download: download,
 	}
 }
 
@@ -135,6 +138,16 @@ func (h *Handler) handleFileHeader(conn net.Conn, hdr protocol.Header, payload [
 	if meta.Size > h.cfg.MaxFileSize {
 		h.sendError(conn, hdr.SessionID, 0, fmt.Sprintf("file too large: %d > %d", meta.Size, h.cfg.MaxFileSize))
 		return
+	}
+
+	// Check available disk space for the target storage directory.
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(h.storage.storageDir, &stat); err == nil {
+		free := int64(stat.Bavail) * int64(stat.Bsize)
+		if meta.Size > free {
+			h.sendError(conn, hdr.SessionID, 0, protocol.ErrDiskFull)
+			return
+		}
 	}
 
 	// Create temp file path
@@ -337,6 +350,11 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 
 // handleDownload serves a stored file to the client.
 func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if h.download != nil {
+		h.download.Acquire()
+		defer h.download.Release()
+	}
+
 	sf := h.storage.GetFile(ctrl.FileID)
 	if sf == nil {
 		h.sendError(conn, hdr.SessionID, 0, "file not found: "+ctrl.FileID)
@@ -356,8 +374,9 @@ func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protoc
 	}
 	defer f.Close()
 
-	// Increment download count
-	sf.IncrementDownloads()
+	// Track active download to prevent deletion while streaming.
+	sf.IncrementActive()
+	defer sf.DecrementActive()
 
 	// Send FILE_HEADER
 	metaBytes, _ := json.Marshal(sf.Metadata)
@@ -389,6 +408,9 @@ func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protoc
 			break
 		}
 	}
+
+	// Mark download as complete for download-count semantics.
+	sf.IncrementDownloads()
 
 	log.Printf("[handler] download complete: %s (%d chunks)", ctrl.FileID, seq)
 }

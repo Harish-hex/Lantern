@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lantern — File Transfer Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏮</text></svg>">
+<style>
+/* ── Reset & Base ──────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg:       #0a0e1a;
+  --surface:  rgba(255,255,255,0.04);
+  --glass:    rgba(255,255,255,0.06);
+  --glass-hi: rgba(255,255,255,0.10);
+  --border:   rgba(255,255,255,0.08);
+  --border-hi:rgba(255,255,255,0.15);
+  --text:     #e8ecf1;
+  --text-dim: #7a8599;
+  --accent:   #f59e0b;
+  --accent-2: #fb923c;
+  --green:    #34d399;
+  --red:      #f87171;
+  --blue:     #60a5fa;
+  --radius:   12px;
+  --radius-sm:8px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html { font-size: 15px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Ambient glow bg ──────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 600px 400px at 20% 10%, rgba(245,158,11,0.07), transparent),
+    radial-gradient(ellipse 500px 500px at 80% 80%, rgba(96,165,250,0.05), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Layout ───────────────────────────────────────────────── */
+.app {
+  position: relative; z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+header .logo {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+header .badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid rgba(245,158,11,0.3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+.connection-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  margin-left: 8px;
+  animation: pulse 2s ease-in-out infinite;
+}
+.connection-dot.disconnected {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%     { opacity: 0.4; }
+}
+
+/* ── Glass Card ───────────────────────────────────────────── */
+.card {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--border-hi); }
+.card-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.card-title .icon { font-size: 1rem; }
+
+/* ── Drop Zone ────────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed rgba(245,158,11,0.25);
+  border-radius: var(--radius);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.dropzone::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: rgba(245,158,11,0.02);
+  transition: background 0.25s;
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.dropzone:hover::before, .dropzone.drag-over::before {
+  background: rgba(245,158,11,0.06);
+}
+.dropzone .dz-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  display: block;
+  transition: transform 0.3s;
+}
+.dropzone:hover .dz-icon, .dropzone.drag-over .dz-icon {
+  transform: translateY(-4px) scale(1.1);
+}
+.dropzone .dz-text {
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  position: relative;
+}
+.dropzone .dz-text strong {
+  color: var(--accent);
+}
+.dropzone input[type="file"] {
+  display: none;
+}
+
+/* ── Upload Progress ──────────────────────────────────────── */
+.upload-progress {
+  display: none;
+  margin-top: 1rem;
+}
+.upload-progress.active { display: block; }
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+  animation: fadeInUp 0.3s ease;
+}
+.progress-item:last-child { border-bottom: none; }
+
+.progress-item .name {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.progress-item .bar-wrapper {
+  width: 140px;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-item .bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.15s ease;
+}
+.progress-item .pct {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  width: 40px;
+  text-align: right;
+}
+.progress-item .status-icon {
+  font-size: 1rem;
+  width: 24px;
+  text-align: center;
+}
+
+/* ── File List ────────────────────────────────────────────── */
+.file-list { list-style: none; }
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  animation: fadeInUp 0.3s ease;
+  transition: background 0.15s;
+  border-radius: var(--radius-sm);
+}
+.file-item:hover {
+  background: var(--glass-hi);
+}
+.file-item:last-child { border-bottom: none; }
+
+.file-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(245,158,11,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+.file-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-meta {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.file-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-family: var(--font);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--glass-hi);
+  border-color: var(--border-hi);
+  transform: translateY(-1px);
+}
+.btn-accent {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.25);
+  color: var(--accent);
+}
+.btn-accent:hover {
+  background: rgba(245,158,11,0.2);
+  border-color: var(--accent);
+}
+.btn-danger {
+  color: var(--red);
+  border-color: rgba(248,113,113,0.2);
+}
+.btn-danger:hover {
+  background: rgba(248,113,113,0.1);
+  border-color: var(--red);
+}
+
+/* ── Toast / Event Log  ───────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: rgba(15,20,35,0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1rem;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: toastIn 0.35s ease, toastOut 0.3s 4s ease forwards;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  max-width: 340px;
+}
+@keyframes toastIn {
+  from { transform: translateY(16px) scale(0.96); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes toastOut {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateY(8px); pointer-events: none; }
+}
+
+/* ── Empty state ──────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-dim);
+}
+.empty-state .es-icon { font-size: 2.5rem; margin-bottom: 0.75rem; display: block; }
+.empty-state p { font-size: 0.85rem; }
+
+/* ── Copy tooltip ─────────────────────────────────────────── */
+.copy-tip {
+  position: absolute;
+  background: var(--accent);
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  animation: tipPop 0.8s ease forwards;
+}
+@keyframes tipPop {
+  0%   { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-16px); opacity: 0; }
+}
+
+/* ── Animations ───────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .app { padding: 1.25rem 1rem; }
+  .dropzone { padding: 2rem 1rem; }
+  .file-item { flex-wrap: wrap; }
+  .file-actions { width: 100%; justify-content: flex-end; margin-top: 0.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <span class="logo">🏮</span>
+    <h1>Lantern</h1>
+    <span class="badge">Dashboard</span>
+    <div class="connection-dot disconnected" id="connDot" title="SSE connection"></div>
+  </header>
+
+  <!-- Upload Card -->
+  <div class="card">
+    <div class="card-title"><span class="icon">⬆</span> Upload</div>
+    <div class="dropzone" id="dropzone">
+      <span class="dz-icon">📁</span>
+      <div class="dz-text">
+        <strong>Drop files here</strong> or click to browse
+      </div>
+      <input type="file" id="fileInput" multiple>
+    </div>
+    <div class="upload-progress" id="uploadProgress"></div>
+  </div>
+
+  <!-- File List Card -->
+  <div class="card">
+    <div class="card-title">
+      <span class="icon">📂</span> Files
+      <span id="fileCount" style="margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-dim)"></span>
+    </div>
+    <ul class="file-list" id="fileList"></ul>
+    <div class="empty-state" id="emptyState">
+      <span class="es-icon">✨</span>
+      <p>No files yet. Upload something to get started.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── DOM refs ────────────────────────────────────────────────
+  const dropzone       = document.getElementById('dropzone');
+  const fileInput      = document.getElementById('fileInput');
+  const uploadProgress = document.getElementById('uploadProgress');
+  const fileList       = document.getElementById('fileList');
+  const fileCount      = document.getElementById('fileCount');
+  const emptyState     = document.getElementById('emptyState');
+  const toasts         = document.getElementById('toasts');
+  const connDot        = document.getElementById('connDot');
+
+  // ── State ───────────────────────────────────────────────────
+  let files = [];
+
+  // ── Helpers ─────────────────────────────────────────────────
+
+  function fmtSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024, units = ['B','KB','MB','GB','TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + units[i];
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = d - now;
+    if (diff <= 0) return 'expired';
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + 'm left';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ' + (mins % 60) + 'm left';
+    const days = Math.floor(hrs / 24);
+    return days + 'd ' + (hrs % 24) + 'h left';
+  }
+
+  function fileIcon(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const map = {
+      'pdf':'📕','doc':'📘','docx':'📘','txt':'📄',
+      'png':'🖼','jpg':'🖼','jpeg':'🖼','gif':'🖼','webp':'🖼','svg':'🖼',
+      'mp4':'🎬','mov':'🎬','avi':'🎬','mkv':'🎬',
+      'mp3':'🎵','wav':'🎵','flac':'🎵','ogg':'🎵',
+      'zip':'📦','tar':'📦','gz':'📦','7z':'📦','rar':'📦',
+      'js':'📜','ts':'📜','go':'📜','py':'📜','rs':'📜','rb':'📜',
+      'json':'📋','csv':'📋','xml':'📋','yaml':'📋','yml':'📋',
+    };
+    return map[ext] || '📎';
+  }
+
+  function toast(icon, msg) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+    toasts.appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+
+  // ── Render file list ────────────────────────────────────────
+
+  function render() {
+    fileList.innerHTML = '';
+    const active = files.filter(f => !f.expired);
+    const expired = files.filter(f => f.expired);
+    const sorted = [...active, ...expired];
+
+    fileCount.textContent = active.length + ' file' + (active.length !== 1 ? 's' : '');
+    emptyState.style.display = sorted.length ? 'none' : 'block';
+
+    sorted.forEach(f => {
+      const li = document.createElement('li');
+      li.className = 'file-item';
+      if (f.expired) li.style.opacity = '0.45';
+      li.innerHTML = `
+        <div class="file-icon">${fileIcon(f.name)}</div>
+        <div class="file-info">
+          <div class="file-name" title="${f.name}">${f.name}</div>
+          <div class="file-meta">
+            <span>${fmtSize(f.size)}</span>
+            <span>↓ ${f.downloads}${f.max_downloads > 0 ? '/' + f.max_downloads : ''}</span>
+            <span>${f.expired ? '⏱ expired' : '⏱ ' + fmtTime(f.expires_at)}</span>
+          </div>
+        </div>
+        <div class="file-actions">
+          ${f.expired ? '' : `
+            <button class="btn btn-accent" data-action="download" data-id="${f.id}" data-name="${f.name}">
+              ⬇ Download
+            </button>
+            <button class="btn" data-action="copy" data-id="${f.id}" title="Copy file ID">
+              📋
+            </button>
+          `}
+          <button class="btn btn-danger" data-action="delete" data-id="${f.id}">
+            ✕
+          </button>
+        </div>
+      `;
+      fileList.appendChild(li);
+    });
+  }
+
+  // ── API ─────────────────────────────────────────────────────
+
+  async function fetchFiles() {
+    try {
+      const res = await fetch('/api/files');
+      if (!res.ok) throw new Error(res.statusText);
+      files = await res.json();
+      if (!Array.isArray(files)) files = [];
+      render();
+    } catch (e) {
+      console.error('fetch files:', e);
+    }
+  }
+
+  async function uploadFile(file) {
+    const id = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const item = document.createElement('div');
+    item.className = 'progress-item';
+    item.id = id;
+    item.innerHTML = `
+      <span class="status-icon">⏳</span>
+      <span class="name" title="${file.name}">${file.name}</span>
+      <div class="bar-wrapper"><div class="bar-fill"></div></div>
+      <span class="pct">0%</span>
+    `;
+    uploadProgress.appendChild(item);
+    uploadProgress.classList.add('active');
+
+    const fill = item.querySelector('.bar-fill');
+    const pctEl = item.querySelector('.pct');
+    const iconEl = item.querySelector('.status-icon');
+
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
+    fd.append('file', file);
+
+    return new Promise((resolve) => {
+      xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) {
+          const p = Math.round(e.loaded / e.total * 100);
+          fill.style.width = p + '%';
+          pctEl.textContent = p + '%';
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          iconEl.textContent = '✅';
+          fill.style.width = '100%';
+          pctEl.textContent = '100%';
+          fill.style.background = 'linear-gradient(90deg, #34d399, #10b981)';
+          toast('✅', `Uploaded ${file.name}`);
+          fetchFiles();
+        } else {
+          iconEl.textContent = '❌';
+          pctEl.textContent = 'err';
+          fill.style.background = 'var(--red)';
+          toast('❌', `Failed: ${file.name}`);
+        }
+        setTimeout(() => {
+          item.style.transition = 'opacity 0.3s';
+          item.style.opacity = '0';
+          setTimeout(() => {
+            item.remove();
+            if (!uploadProgress.children.length) uploadProgress.classList.remove('active');
+          }, 300);
+        }, 2000);
+        resolve();
+      });
+
+      xhr.addEventListener('error', () => {
+        iconEl.textContent = '❌';
+        pctEl.textContent = 'err';
+        toast('❌', `Network error: ${file.name}`);
+        resolve();
+      });
+
+      xhr.open('POST', '/api/upload');
+      xhr.send(fd);
+    });
+  }
+
+  async function deleteFile(id) {
+    try {
+      const res = await fetch('/api/files/' + id, { method: 'DELETE' });
+      if (res.ok || res.status === 204) {
+        toast('🗑', 'File deleted');
+        fetchFiles();
+      } else {
+        toast('❌', 'Delete failed');
+      }
+    } catch (e) {
+      toast('❌', 'Delete error');
+    }
+  }
+
+  function downloadFile(id, name) {
+    const a = document.createElement('a');
+    a.href = '/api/files/' + id;
+    a.download = name || '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('⬇', `Downloading ${name}`);
+  }
+
+  function copyID(id, btn) {
+    navigator.clipboard.writeText(id).then(() => {
+      const tip = document.createElement('span');
+      tip.className = 'copy-tip';
+      tip.textContent = 'Copied!';
+      const rect = btn.getBoundingClientRect();
+      tip.style.left = rect.left + rect.width / 2 - 20 + 'px';
+      tip.style.top = rect.top - 4 + 'px';
+      document.body.appendChild(tip);
+      setTimeout(() => tip.remove(), 800);
+    });
+  }
+
+  // ── Drag & Drop ─────────────────────────────────────────────
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const chosen = Array.from(fileInput.files);
+    if (chosen.length) chosen.forEach(f => uploadFile(f));
+    fileInput.value = '';
+  });
+
+  ['dragenter','dragover'].forEach(ev =>
+    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag-over'); })
+  );
+  ['dragleave','drop'].forEach(ev =>
+    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag-over'); })
+  );
+  dropzone.addEventListener('drop', e => {
+    const dropped = Array.from(e.dataTransfer.files);
+    if (dropped.length) dropped.forEach(f => uploadFile(f));
+  });
+
+  // ── Event delegation ────────────────────────────────────────
+
+  fileList.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id     = btn.dataset.id;
+    if (action === 'download') downloadFile(id, btn.dataset.name);
+    if (action === 'delete')   deleteFile(id);
+    if (action === 'copy')     copyID(id, btn);
+  });
+
+  // ── SSE (Server-Sent Events) ────────────────────────────────
+
+  function connectSSE() {
+    const es = new EventSource('/events');
+
+    es.addEventListener('open', () => {
+      connDot.classList.remove('disconnected');
+      connDot.title = 'Connected';
+    });
+
+    es.addEventListener('message', e => {
+      try {
+        const evt = JSON.parse(e.data);
+        if (evt.type === 'upload')   toast('⬆', `New upload: ${evt.filename || evt.file_id}`);
+        if (evt.type === 'download') toast('⬇', `Downloaded: ${evt.filename || evt.file_id}`);
+        if (evt.type === 'delete')   toast('🗑', `Deleted: ${evt.filename || evt.file_id}`);
+        fetchFiles(); // refresh list on any event
+      } catch (_) {}
+    });
+
+    es.addEventListener('error', () => {
+      connDot.classList.add('disconnected');
+      connDot.title = 'Disconnected — reconnecting…';
+      es.close();
+      setTimeout(connectSSE, 3000);
+    });
+  }
+
+  // ── Init ────────────────────────────────────────────────────
+
+  fetchFiles();
+  connectSSE();
+
+  // Periodic TTL refresh (expiry countdowns)
+  setInterval(render, 30000);
+
+})();
+</script>
+</body>
+</html>

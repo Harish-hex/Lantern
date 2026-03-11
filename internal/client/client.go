@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Harish-hex/Lantern/internal/protocol"
 )
@@ -151,6 +152,8 @@ func (c *Client) sendFile(path string, index, total uint32, ttl, maxDownloads in
 		return "", fmt.Errorf("file header: %w", err)
 	}
 
+	const maxRetries = 3
+
 	// Stream chunks
 	buf := make([]byte, c.chunkSize)
 	var seq uint32
@@ -164,26 +167,42 @@ func (c *Client) sendFile(path string, index, total uint32, ttl, maxDownloads in
 				flags |= protocol.FlagLastChunk
 			}
 
-			chdr := protocol.NewHeader(protocol.MsgChunk, flags, 0, seq, c.sessionID)
-			if err := protocol.WritePacket(c.conn, chdr, buf[:n]); err != nil {
-				return "", fmt.Errorf("send chunk %d: %w", seq, err)
-			}
+			chunkData := make([]byte, n)
+			copy(chunkData, buf[:n])
 
-			// Wait for chunk ACK/NAK
-			ctrl, err := c.readACK()
-			if err != nil {
-				return "", fmt.Errorf("chunk %d: %w", seq, err)
+			var ctrl *protocol.ControlPayload
+			var err error
+
+			for attempt := 0; attempt <= maxRetries; attempt++ {
+				chdr := protocol.NewHeader(protocol.MsgChunk, flags, 0, seq, c.sessionID)
+				if err = protocol.WritePacket(c.conn, chdr, chunkData); err != nil {
+					return "", fmt.Errorf("send chunk %d (attempt %d): %w", seq, attempt+1, err)
+				}
+
+				// Wait for chunk ACK/NAK
+				ctrl, err = c.readACK()
+				if err != nil {
+					return "", fmt.Errorf("chunk %d: %w", seq, err)
+				}
+
+				if ctrl.Type != protocol.CtrlNAK {
+					break
+				}
+
+				// NAK: retry if we have attempts left
+				if attempt < maxRetries {
+					log.Printf("[client] chunk %d NAK (%s), retrying (%d/%d)...", seq, ctrl.Message, attempt+1, maxRetries)
+					time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+					continue
+				}
+
+				return "", fmt.Errorf("chunk %d NAK after %d retries: %s", seq, maxRetries, ctrl.Message)
 			}
 
 			// Report progress
 			if progressFn != nil {
 				pct := float64(seq) / float64(totalChunks) * 100
 				progressFn(filename, pct)
-			}
-
-			// If NAK, we would need to retransmit — for now, treat as error
-			if ctrl.Type == protocol.CtrlNAK {
-				return "", fmt.Errorf("chunk %d NAK: %s", seq, ctrl.Message)
 			}
 
 			// If this was the complete response, return the file ID

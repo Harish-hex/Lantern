@@ -17,6 +17,7 @@ type Server struct {
 	store    *SessionStore
 	storage  *StorageManager
 	upload   *Semaphore
+	download *Semaphore
 	quit     chan struct{}
 }
 
@@ -27,13 +28,29 @@ func New(cfg config.Config) (*Server, error) {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}
 
-	return &Server{
+	s := &Server{
 		cfg:     cfg,
 		store:   NewSessionStore(),
 		storage: storage,
 		upload:  NewSemaphore(cfg.MaxUploadConcurrency),
 		quit:    make(chan struct{}),
-	}, nil
+	}
+
+	if cfg.MaxDownloadConcurrency > 0 {
+		s.download = NewSemaphore(cfg.MaxDownloadConcurrency)
+	}
+
+	return s, nil
+}
+
+// Bridge returns a web.Bridge wired to this server's internal subsystems.
+// Call this after New() and before Start().
+func (s *Server) Bridge() *Bridge {
+	return &Bridge{
+		storage: s.storage,
+		upload:  s.upload,
+		cfg:     s.cfg,
+	}
 }
 
 // Start binds to the configured address and enters the accept loop.
@@ -65,7 +82,7 @@ func (s *Server) Start() error {
 				continue
 			}
 		}
-		handler := NewHandler(s.cfg, s.store, s.storage, s.upload)
+		handler := NewHandler(s.cfg, s.store, s.storage, s.upload, s.download)
 		go handler.Handle(conn)
 	}
 }

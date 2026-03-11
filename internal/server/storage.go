@@ -22,7 +22,18 @@ type StoredFile struct {
 	ActiveDownloads int32 // atomic — currently streaming
 }
 
-// IncrementDownloads atomically increments the counter. Returns the new count.
+// IncrementActive increments the number of in-progress downloads.
+func (f *StoredFile) IncrementActive() int32 {
+	return atomic.AddInt32(&f.ActiveDownloads, 1)
+}
+
+// DecrementActive decrements the number of in-progress downloads.
+func (f *StoredFile) DecrementActive() int32 {
+	return atomic.AddInt32(&f.ActiveDownloads, -1)
+}
+
+// IncrementDownloads atomically increments the completed-download counter.
+// Returns the new count.
 func (f *StoredFile) IncrementDownloads() int32 {
 	return atomic.AddInt32(&f.DownloadCount, 1)
 }

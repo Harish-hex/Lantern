@@ -11,6 +11,7 @@ import (
 type Config struct {
 	ListenAddr string
 	Port       int
+	HTTPPort   int // HTTP/WebSocket server port (0 = disabled)
 
 	StorageDir string // Final resting place for uploaded files
 	TempDir    string // Temp files during in-flight uploads
@@ -39,6 +40,7 @@ func DefaultConfig() Config {
 	return Config{
 		ListenAddr: "0.0.0.0",
 		Port:       9090,
+		HTTPPort:   9724,
 
 		StorageDir: filepath.Join(base, "storage"),
 		TempDir:    filepath.Join(base, "tmp"),
