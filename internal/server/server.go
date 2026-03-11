@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Harish-hex/Lantern/internal/config"
+	"github.com/Harish-hex/Lantern/internal/index"
 )
 
 // Server is the main entry point for the Lantern daemon.
@@ -18,12 +19,19 @@ type Server struct {
 	storage  *StorageManager
 	upload   *Semaphore
 	download *Semaphore
+	stats    *Stats
+	idx      index.Store
 	quit     chan struct{}
 }
 
 // New creates and wires a Server but does not start listening.
 func New(cfg config.Config) (*Server, error) {
-	storage, err := NewStorageManager(cfg.StorageDir, cfg.TempDir)
+	idx, err := index.NewJSONStore(cfg.IndexDir)
+	if err != nil {
+		return nil, fmt.Errorf("init index: %w", err)
+	}
+
+	storage, err := NewStorageManager(cfg.StorageDir, cfg.TempDir, idx)
 	if err != nil {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}
@@ -33,11 +41,17 @@ func New(cfg config.Config) (*Server, error) {
 		store:   NewSessionStore(),
 		storage: storage,
 		upload:  NewSemaphore(cfg.MaxUploadConcurrency),
+		stats:   NewStats(),
+		idx:     idx,
 		quit:    make(chan struct{}),
 	}
 
 	if cfg.MaxDownloadConcurrency > 0 {
 		s.download = NewSemaphore(cfg.MaxDownloadConcurrency)
+	}
+
+	if err := s.restorePersistedState(); err != nil {
+		return nil, fmt.Errorf("restore persisted state: %w", err)
 	}
 
 	return s, nil
@@ -46,10 +60,11 @@ func New(cfg config.Config) (*Server, error) {
 // Bridge returns a web.Bridge wired to this server's internal subsystems.
 // Call this after New() and before Start().
 func (s *Server) Bridge() *Bridge {
-	return &Bridge{
+		return &Bridge{
 		storage: s.storage,
 		upload:  s.upload,
 		cfg:     s.cfg,
+		stats:   s.stats,
 	}
 }
 
@@ -82,7 +97,7 @@ func (s *Server) Start() error {
 				continue
 			}
 		}
-		handler := NewHandler(s.cfg, s.store, s.storage, s.upload, s.download)
+		handler := NewHandler(s, s.cfg, s.store, s.storage, s.upload, s.download, s.stats)
 		go handler.Handle(conn)
 	}
 }
@@ -94,6 +109,10 @@ func (s *Server) Stop() {
 		s.listener.Close()
 	}
 	log.Println("[server] shutdown complete")
+}
+
+func (s *Server) logf(format string, args ...any) {
+	log.Printf(format, args...)
 }
 
 // cleanupLoop periodically reaps expired files and idle sessions.
@@ -123,14 +142,36 @@ func (s *Server) reapExpiredFiles() {
 // reapIdleSessions removes sessions that have been idle too long.
 func (s *Server) reapIdleSessions() {
 	for _, sess := range s.store.All() {
-		if sess.IdleFor() > s.cfg.SessionTimeout {
-			state := sess.GetState()
-			if state == StateActive || state == StatePaused {
-				log.Printf("[cleanup] reaping idle session %x (idle %v)", sess.ID, sess.IdleFor())
-				sess.SetState(StateFailed)
-				s.store.Delete(sess.ID)
-				s.upload.Release()
+		state := sess.GetState()
+		if state != StateActive && state != StatePaused {
+			continue
+		}
+
+		limit := s.cfg.SessionTimeout
+		if state == StatePaused {
+			limit = s.cfg.ResumeTTL
+		}
+		if sess.IdleFor() <= limit {
+			continue
+		}
+
+		log.Printf("[cleanup] reaping idle session %x (idle %v)", sess.ID, sess.IdleFor())
+		s.cleanupSession(sess, true)
+	}
+}
+
+func (s *Server) cleanupSession(sess *Session, removeTemp bool) {
+	sess.SetState(StateFailed)
+	s.store.Delete(sess.ID)
+	if removeTemp {
+		sess.mu.Lock()
+		for _, ft := range sess.Files {
+			if ft.TempPath != "" && ft.State != FileStateComplete {
+				s.storage.CleanupTemp(ft.TempPath)
 			}
 		}
+		sess.mu.Unlock()
 	}
+	releaseUploadSlot(sess, s.upload)
+	s.deleteSessionSnapshot(sess.ID)
 }

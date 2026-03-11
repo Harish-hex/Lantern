@@ -21,6 +21,7 @@ type Bridge struct {
 	storage *StorageManager
 	upload  *Semaphore
 	cfg     config.Config
+	stats   *Stats
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -28,6 +29,13 @@ type Bridge struct {
 // Cfg returns the server config so HTTP handlers can read defaults such as
 // TTLDefault, MaxDownloads, ChunkSize, etc.
 func (b *Bridge) Cfg() config.Config { return b.cfg }
+
+func (b *Bridge) Stats() StatsSnapshot {
+	if b.stats == nil {
+		return StatsSnapshot{}
+	}
+	return b.stats.Snapshot()
+}
 
 // ── Storage (read) ───────────────────────────────────────────────────────────
 

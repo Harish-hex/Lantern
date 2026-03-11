@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Harish-hex/Lantern/internal/index"
 	"github.com/Harish-hex/Lantern/internal/protocol"
 )
 
@@ -55,10 +56,11 @@ type StorageManager struct {
 	storageDir string
 	tempDir    string
 	files      map[string]*StoredFile // keyed by file ID
+	index      index.Store
 }
 
 // NewStorageManager creates directories and returns a ready manager.
-func NewStorageManager(storageDir, tempDir string) (*StorageManager, error) {
+func NewStorageManager(storageDir, tempDir string, idx index.Store) (*StorageManager, error) {
 	for _, dir := range []string{storageDir, tempDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("create directory %s: %w", dir, err)
@@ -68,6 +70,7 @@ func NewStorageManager(storageDir, tempDir string) (*StorageManager, error) {
 		storageDir: storageDir,
 		tempDir:    tempDir,
 		files:      make(map[string]*StoredFile),
+		index:      idx,
 	}, nil
 }
 
@@ -95,7 +98,26 @@ func (sm *StorageManager) MoveToStorage(tempPath, fileID string, meta protocol.F
 	sm.files[fileID] = sf
 	sm.mu.Unlock()
 
+	if sm.index != nil {
+		if err := sm.index.SaveStoredFile(toStoredFileSnapshot(sf)); err != nil {
+			return nil, err
+		}
+	}
+
 	return sf, nil
+}
+
+// RegisterStoredFile registers an already-existing file, used during restart
+// recovery. The file must already exist on disk at sf.Path.
+func (sm *StorageManager) RegisterStoredFile(sf *StoredFile) error {
+	sm.mu.Lock()
+	sm.files[sf.ID] = sf
+	sm.mu.Unlock()
+
+	if sm.index != nil {
+		return sm.index.SaveStoredFile(toStoredFileSnapshot(sf))
+	}
+	return nil
 }
 
 // GetFile returns a stored file by ID, or nil.
@@ -116,6 +138,9 @@ func (sm *StorageManager) DeleteFile(fileID string) {
 
 	if ok {
 		os.Remove(sf.Path) // best-effort
+		if sm.index != nil {
+			_ = sm.index.DeleteStoredFile(fileID)
+		}
 	}
 }
 

@@ -53,6 +53,7 @@ func New(bridge *server.Bridge) *Server {
 	// REST API
 	mux.HandleFunc("/api/files", ws.handleFiles)
 	mux.HandleFunc("/api/files/", ws.handleFileByID)
+	mux.HandleFunc("/api/stats", ws.handleStats)
 	mux.HandleFunc("/api/upload", ws.handleUpload)
 
 	// SSE live events
@@ -131,6 +132,14 @@ func (ws *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	jsonOK(w, dtos)
+}
+
+func (ws *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	jsonOK(w, ws.bridge.Stats())
 }
 
 // ── /api/files/{id} ──────────────────────────────────────────────────────────

@@ -43,6 +43,7 @@ type FileTransfer struct {
 	LastAckedSeq   uint32
 	SHA256         *protocol.SHA256Hasher
 	State          FileTransferState
+	StartedAt      time.Time
 }
 
 // Session represents one client connection and the set of files it is
@@ -58,6 +59,7 @@ type Session struct {
 
 	Files            map[uint32]*FileTransfer // keyed by file_index
 	CurrentFileIndex uint32
+	HoldsUploadSlot  bool
 }
 
 // NewSession creates a fresh session bound to the given connection.

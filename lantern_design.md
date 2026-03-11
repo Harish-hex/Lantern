@@ -234,3 +234,58 @@ lantern/
 - No mobile-native apps (browser only)
 - No cross-restart resume
 - No chunk size optimization (start at 256KB, benchmark on Pi in Phase 2)
+
+---
+
+## Phase 2 Implementation Summary
+
+Phase 2 builds on the current architecture rather than replacing it.
+
+### Current starting point
+
+- In-memory session pause/resume already exists in `internal/server/session.go`
+- `StorageManager` already backs both the TCP and HTTP paths
+- chunk size and concurrency are already configurable in `internal/config/config.go`
+- restart resilience and service discovery do not exist yet
+
+### Planned additions
+
+#### 1. mDNS discovery
+
+- Add `internal/discovery/mdns.go`
+- Extend `config.Config` with `EnableMDNS` and `MDNSServiceName`
+- Wire advertiser startup and shutdown from `cmd/lantern/main.go`
+- Advertise the raw TCP service and expose the HTTP dashboard port via TXT records or a second service
+
+#### 2. Pi Zero 2W deployment profile
+
+- Keep `config.Config` as the source of truth
+- Document a conservative operating profile for concurrency, chunk size, TTL, and file-size limits
+- Add a dedicated deployment guide with ARM build instructions and a `systemd` unit
+
+#### 3. Cross-restart resume
+
+- Add `internal/index/index.go` for persisted session and stored-file snapshots
+- Restore completed stored files into `StorageManager` on startup
+- Restore paused upload sessions whose temp files still exist and whose resume window has not expired
+- Keep the current wire protocol initially and reuse `SESSION_ID` semantics where possible
+
+#### 4. Chunk-size tuning
+
+- Add transfer stats collection in the server path
+- Expose stats through an HTTP endpoint such as `/api/stats`
+- Surface chunk-size configuration more clearly in the CLI and Pi docs
+- Focus on manual tuning first, not automatic adaptation
+
+### Rollout order
+
+1. persistent stored-file reload
+2. mDNS advertiser
+3. Pi deployment documentation and config surfacing
+4. persisted paused-session restore
+5. transfer stats and chunk-size benchmarking support
+
+### Supporting docs
+
+- Detailed implementation plan: [PHASE2_PLAN.md](/Users/harishharish/Projects/Lantern/Lantern/PHASE2_PLAN.md)
+- Raspberry Pi operations guide: [PI_DEPLOYMENT.md](/Users/harishharish/Projects/Lantern/Lantern/PI_DEPLOYMENT.md)

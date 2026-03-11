@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/Harish-hex/Lantern/internal/config"
 	"github.com/Harish-hex/Lantern/internal/protocol"
@@ -15,21 +16,25 @@ import (
 
 // Handler dispatches incoming Lantern packets for a single connection.
 type Handler struct {
-	cfg     config.Config
-	store   *SessionStore
-	storage *StorageManager
-	upload  *Semaphore
+	server   *Server
+	cfg      config.Config
+	store    *SessionStore
+	storage  *StorageManager
+	upload   *Semaphore
 	download *Semaphore
+	stats    *Stats
 }
 
 // NewHandler creates a handler wired to shared state.
-func NewHandler(cfg config.Config, store *SessionStore, storage *StorageManager, upload *Semaphore, download *Semaphore) *Handler {
+func NewHandler(srv *Server, cfg config.Config, store *SessionStore, storage *StorageManager, upload *Semaphore, download *Semaphore, stats *Stats) *Handler {
 	return &Handler{
+		server:   srv,
 		cfg:      cfg,
 		store:    store,
 		storage:  storage,
 		upload:   upload,
 		download: download,
+		stats:    stats,
 	}
 }
 
@@ -50,9 +55,10 @@ func (h *Handler) Handle(conn net.Conn) {
 				log.Printf("[handler] %s read error: %v", remote, err)
 			}
 			// Try to pause session if one existed
-			if sess := h.store.GetByConn(conn); sess != nil {
+			if sess := h.store.GetByConn(conn); sess != nil && sess.GetState() == StateActive {
 				sess.SetState(StatePaused)
 				log.Printf("[handler] session %x paused", sess.ID)
+				h.server.persistSession(sess)
 			}
 			return
 		}
@@ -81,10 +87,26 @@ func (h *Handler) handleHandshake(conn net.Conn, hdr protocol.Header, _ []byte) 
 	if existing := h.store.Get(sid); existing != nil {
 		if existing.GetState() == StatePaused {
 			existing.mu.Lock()
+			if !existing.HoldsUploadSlot {
+				if !h.upload.TryAcquire() {
+					existing.mu.Unlock()
+					h.sendControlMsg(conn, sid, 0, protocol.ControlPayload{
+						Type:       protocol.CtrlBusy,
+						Message:    "server at upload capacity",
+						RetryAfter: 5,
+					})
+					return
+				}
+				existing.HoldsUploadSlot = true
+			}
 			existing.State = StateActive
 			existing.Conn = conn
 			existing.mu.Unlock()
 			existing.Touch()
+			if h.stats != nil {
+				h.stats.RecordResume()
+			}
+			h.server.persistSession(existing)
 			log.Printf("[handler] session %x resumed from %s", sid, conn.RemoteAddr())
 			h.sendSessionACK(conn, sid)
 			return
@@ -108,6 +130,7 @@ func (h *Handler) handleHandshake(conn net.Conn, hdr protocol.Header, _ []byte) 
 	}
 
 	sess := NewSession(sid, conn)
+	sess.HoldsUploadSlot = true
 	sess.SetState(StateActive)
 	if err := h.store.Create(sess); err != nil {
 		h.upload.Release()
@@ -116,6 +139,7 @@ func (h *Handler) handleHandshake(conn net.Conn, hdr protocol.Header, _ []byte) 
 	}
 
 	log.Printf("[handler] new session %x from %s", sid, conn.RemoteAddr())
+	h.server.persistSession(sess)
 	h.sendSessionACK(conn, sid)
 }
 
@@ -155,10 +179,11 @@ func (h *Handler) handleFileHeader(conn net.Conn, hdr protocol.Header, payload [
 	tempPath := h.storage.CreateTemp(sidHex, meta.FileIndex)
 
 	ft := &FileTransfer{
-		Metadata: meta,
-		TempPath: tempPath,
-		SHA256:   protocol.NewSHA256Hasher(),
-		State:    FileStateReceiving,
+		Metadata:  meta,
+		TempPath:  tempPath,
+		SHA256:    protocol.NewSHA256Hasher(),
+		State:     FileStateReceiving,
+		StartedAt: time.Now(),
 	}
 
 	sess.mu.Lock()
@@ -168,6 +193,7 @@ func (h *Handler) handleFileHeader(conn net.Conn, hdr protocol.Header, payload [
 
 	log.Printf("[handler] session %x: file %d/%d '%s' (%d bytes, %d chunks)",
 		hdr.SessionID, meta.FileIndex+1, meta.TotalFiles, meta.Filename, meta.Size, meta.TotalChunks)
+	h.server.persistSession(sess)
 
 	// ACK the file header
 	h.sendControlMsg(conn, hdr.SessionID, 0, protocol.ControlPayload{
@@ -197,6 +223,9 @@ func (h *Handler) handleChunk(conn net.Conn, hdr protocol.Header, payload []byte
 	// Verify CRC-32
 	if !protocol.VerifyChecksum(payload, crc) {
 		log.Printf("[handler] session %x: CRC mismatch on chunk %d", hdr.SessionID, hdr.Sequence)
+		if h.stats != nil {
+			h.stats.RecordCRCNAK()
+		}
 		h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
 			Type:    protocol.CtrlNAK,
 			Seq:     hdr.Sequence,
@@ -223,6 +252,10 @@ func (h *Handler) handleChunk(conn net.Conn, hdr protocol.Header, payload []byte
 	ft.ReceivedChunks++
 	ft.LastAckedSeq = hdr.Sequence
 
+	if hdr.HasFlag(protocol.FlagLastChunk) || hdr.Sequence%32 == 0 {
+		h.server.persistSession(sess)
+	}
+
 	// ACK the chunk
 	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
 		Type: protocol.CtrlACK,
@@ -238,6 +271,7 @@ func (h *Handler) handleChunk(conn net.Conn, hdr protocol.Header, payload []byte
 // finalizeFile verifies the full SHA-256, moves temp → storage, and reports result.
 func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *FileTransfer) {
 	ft.State = FileStateVerifying
+	h.server.persistSession(sess)
 
 	// Verify chunk count
 	if ft.ReceivedChunks != ft.Metadata.TotalChunks {
@@ -245,6 +279,7 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 			sid, ft.ReceivedChunks, ft.Metadata.TotalChunks)
 		ft.State = FileStateFailed
 		h.sendError(conn, sid, 0, protocol.ErrChunkCountErr)
+		h.server.persistSession(sess)
 		return
 	}
 
@@ -256,6 +291,7 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 		ft.State = FileStateFailed
 		h.sendError(conn, sid, 0, protocol.ErrIntegrityFailed)
 		h.storage.CleanupTemp(ft.TempPath)
+		h.server.persistSession(sess)
 		return
 	}
 
@@ -281,7 +317,11 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 
 	ft.State = FileStateComplete
 	ft.StoredFileID = fileID
+	if h.stats != nil {
+		h.stats.RecordUpload(fileID, ft.Metadata.Filename, ft.Metadata.Size, ft.StartedAt)
+	}
 	log.Printf("[handler] session %x: file '%s' stored as %s", sid, ft.Metadata.Filename, fileID)
+	h.server.persistSession(sess)
 
 	h.sendControlMsg(conn, sid, 0, protocol.ControlPayload{
 		Type:   protocol.CtrlComplete,
@@ -321,7 +361,8 @@ func (h *Handler) checkSessionComplete(conn net.Conn, sid [16]byte, sess *Sessio
 		sess.State = StateCompleted
 	}
 
-	h.upload.Release()
+	releaseUploadSlot(sess, h.upload)
+	h.server.deleteSessionSnapshot(sess.ID)
 
 	log.Printf("[handler] session %x complete: %d succeeded, %d failed",
 		sid, len(succeeded), len(failed))
@@ -350,6 +391,7 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 
 // handleDownload serves a stored file to the client.
 func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	startedAt := time.Now()
 	if h.download != nil {
 		h.download.Acquire()
 		defer h.download.Release()
@@ -411,6 +453,9 @@ func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protoc
 
 	// Mark download as complete for download-count semantics.
 	sf.IncrementDownloads()
+	if h.stats != nil {
+		h.stats.RecordDownload(ctrl.FileID, sf.Metadata.Filename, sf.Metadata.Size, startedAt)
+	}
 
 	log.Printf("[handler] download complete: %s (%d chunks)", ctrl.FileID, seq)
 }

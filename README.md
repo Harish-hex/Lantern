@@ -267,20 +267,25 @@ lantern serve \
 - [x] CLI client
 
 ### 🔄 Phase 1b — Browser UI
-- [ ] HTTP server on separate port
-- [ ] Drag-and-drop upload panel
-- [ ] File browser with TTL and download count
-- [ ] WebSocket real-time progress
+- [x] HTTP server on separate port
+- [x] Drag-and-drop upload panel
+- [x] File browser with TTL and download count
+- [x] Live event stream for browser updates
 - [ ] QR code on server startup
-- [ ] Single binary with embedded static assets
+- [x] Single binary with embedded static assets
 
 ### 📡 Phase 2 — Raspberry Pi Deployment
-- [ ] mDNS discovery (`lantern.local`)
-- [ ] Cross-restart session resume
-- [ ] WiFi hotspot mode (`hostapd`)
+- [ ] mDNS discovery (`_lantern._tcp` / `lantern.local`)
+- [ ] Persistent stored-file reload after restart
+- [ ] Cross-restart upload resume within a bounded TTL window
 - [ ] Auto-start on boot (`systemd`)
-- [ ] Chunk size tuning on Pi hardware
+- [ ] Chunk size observability and tuning on Pi hardware
 - [ ] ARM binary cross-compilation
+
+Planning docs:
+
+- [Phase 2 implementation plan](./PHASE2_PLAN.md)
+- [Raspberry Pi deployment guide](./PI_DEPLOYMENT.md)
 
 ### 🔒 Phase 3 — Real-Time Communication
 - [ ] **LAN chat** — group and direct messaging between connected devices
