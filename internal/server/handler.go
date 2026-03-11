@@ -318,7 +318,11 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 	ft.State = FileStateComplete
 	ft.StoredFileID = fileID
 	if h.stats != nil {
-		h.stats.RecordUpload(fileID, ft.Metadata.Filename, ft.Metadata.Size, ft.StartedAt)
+		chunkSize := ft.Metadata.ChunkSize
+		if chunkSize == 0 {
+			chunkSize = h.cfg.ChunkSize
+		}
+		h.stats.RecordUpload(fileID, ft.Metadata.Filename, ft.Metadata.Size, chunkSize, ft.StartedAt)
 	}
 	log.Printf("[handler] session %x: file '%s' stored as %s", sid, ft.Metadata.Filename, fileID)
 	h.server.persistSession(sess)
@@ -454,7 +458,7 @@ func (h *Handler) handleDownload(conn net.Conn, hdr protocol.Header, ctrl protoc
 	// Mark download as complete for download-count semantics.
 	sf.IncrementDownloads()
 	if h.stats != nil {
-		h.stats.RecordDownload(ctrl.FileID, sf.Metadata.Filename, sf.Metadata.Size, startedAt)
+		h.stats.RecordDownload(ctrl.FileID, sf.Metadata.Filename, sf.Metadata.Size, h.cfg.ChunkSize, startedAt)
 	}
 
 	log.Printf("[handler] download complete: %s (%d chunks)", ctrl.FileID, seq)

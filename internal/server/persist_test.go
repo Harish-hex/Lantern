@@ -12,6 +12,16 @@ import (
 	"github.com/Harish-hex/Lantern/internal/protocol"
 )
 
+func testConfigWithTempPaths(t *testing.T) config.Config {
+	t.Helper()
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.StorageDir = filepath.Join(root, "storage")
+	cfg.TempDir = filepath.Join(root, "tmp")
+	cfg.IndexDir = filepath.Join(root, "index")
+	return cfg
+}
+
 func TestRestoreSessionFromSnapshotRehydratesHasherAndProgress(t *testing.T) {
 	cfg := config.Default()
 	cfg.ChunkSize = 4
@@ -88,5 +98,165 @@ func TestStoredFileSnapshotConversion(t *testing.T) {
 	}
 	if !roundTrip.ExpiresAt.Equal(expires) {
 		t.Fatalf("ExpiresAt = %v, want %v", roundTrip.ExpiresAt, expires)
+	}
+}
+
+func TestRestoreSessionsSkipsExpiredSnapshots(t *testing.T) {
+	cfg := testConfigWithTempPaths(t)
+	cfg.ResumeTTL = 30 * time.Second
+
+	idx, err := index.NewJSONStore(cfg.IndexDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	var sid [16]byte
+	copy(sid[:], []byte("expired-session!!"))
+
+	snapshot := &index.SessionSnapshot{
+		ID:           hex.EncodeToString(sid[:]),
+		State:        StatePaused.String(),
+		CreatedAt:    time.Now().Add(-5 * time.Minute),
+		LastActivity: time.Now().Add(-2 * time.Minute),
+	}
+	if err := idx.SaveSession(snapshot); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if got := len(srv.store.All()); got != 0 {
+		t.Fatalf("restored sessions = %d, want 0", got)
+	}
+
+	remaining, err := idx.LoadSessions()
+	if err != nil {
+		t.Fatalf("LoadSessions: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining snapshots = %d, want 0", len(remaining))
+	}
+}
+
+func TestRestoreSessionsDropsSnapshotWhenTempFileMissing(t *testing.T) {
+	cfg := testConfigWithTempPaths(t)
+	cfg.ResumeTTL = 5 * time.Minute
+
+	idx, err := index.NewJSONStore(cfg.IndexDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	var sid [16]byte
+	copy(sid[:], []byte("missing-temp-file"))
+
+	snapshot := &index.SessionSnapshot{
+		ID:           hex.EncodeToString(sid[:]),
+		State:        StatePaused.String(),
+		CreatedAt:    time.Now().Add(-2 * time.Minute),
+		LastActivity: time.Now().Add(-10 * time.Second),
+		Files: []index.FileTransferSnapshot{{
+			FileIndex: 0,
+			Metadata: protocol.FileMetadata{
+				Filename:    "resume.bin",
+				Size:        4,
+				ChunkSize:   4,
+				TotalChunks: 1,
+			},
+			TempPath: filepath.Join(cfg.TempDir, "does-not-exist.tmp"),
+			State:    FileStateReceiving.String(),
+		}},
+	}
+	if err := idx.SaveSession(snapshot); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if got := len(srv.store.All()); got != 0 {
+		t.Fatalf("restored sessions = %d, want 0", got)
+	}
+
+	remaining, err := idx.LoadSessions()
+	if err != nil {
+		t.Fatalf("LoadSessions: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining snapshots = %d, want 0", len(remaining))
+	}
+}
+
+func TestRestoreStoredFilesFiltersExpiredAndMissing(t *testing.T) {
+	cfg := testConfigWithTempPaths(t)
+
+	idx, err := index.NewJSONStore(cfg.IndexDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	validPath := filepath.Join(cfg.StorageDir, "file-valid")
+	if err := os.MkdirAll(cfg.StorageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll storage: %v", err)
+	}
+	if err := os.WriteFile(validPath, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile valid: %v", err)
+	}
+
+	valid := &index.StoredFileSnapshot{
+		ID:           "valid",
+		Path:         validPath,
+		ExpiresAt:    time.Now().Add(10 * time.Minute),
+		MaxDownloads: 3,
+		Metadata: protocol.FileMetadata{
+			Filename: "valid.bin",
+			Size:     2,
+		},
+	}
+	expired := &index.StoredFileSnapshot{
+		ID:        "expired",
+		Path:      filepath.Join(cfg.StorageDir, "file-expired"),
+		ExpiresAt: time.Now().Add(-1 * time.Minute),
+		Metadata:  protocol.FileMetadata{Filename: "expired.bin", Size: 1},
+	}
+	missing := &index.StoredFileSnapshot{
+		ID:        "missing",
+		Path:      filepath.Join(cfg.StorageDir, "file-missing"),
+		ExpiresAt: time.Now().Add(10 * time.Minute),
+		Metadata:  protocol.FileMetadata{Filename: "missing.bin", Size: 1},
+	}
+
+	for _, snap := range []*index.StoredFileSnapshot{valid, expired, missing} {
+		if err := idx.SaveStoredFile(snap); err != nil {
+			t.Fatalf("SaveStoredFile(%s): %v", snap.ID, err)
+		}
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if got := srv.storage.GetFile("valid"); got == nil {
+		t.Fatal("expected valid stored file to be restored")
+	}
+	if got := srv.storage.GetFile("expired"); got != nil {
+		t.Fatal("expired file should not be restored")
+	}
+	if got := srv.storage.GetFile("missing"); got != nil {
+		t.Fatal("missing file should not be restored")
+	}
+
+	remaining, err := idx.LoadStoredFiles()
+	if err != nil {
+		t.Fatalf("LoadStoredFiles: %v", err)
+	}
+	if len(remaining) != 1 || remaining[0].ID != "valid" {
+		t.Fatalf("remaining stored snapshots = %+v, want only valid", remaining)
 	}
 }

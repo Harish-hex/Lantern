@@ -275,12 +275,12 @@ lantern serve \
 - [x] Single binary with embedded static assets
 
 ### 📡 Phase 2 — Raspberry Pi Deployment
-- [ ] mDNS discovery (`_lantern._tcp` / `lantern.local`)
-- [ ] Persistent stored-file reload after restart
-- [ ] Cross-restart upload resume within a bounded TTL window
-- [ ] Auto-start on boot (`systemd`)
-- [ ] Chunk size observability and tuning on Pi hardware
-- [ ] ARM binary cross-compilation
+- [x] mDNS discovery (`_lantern._tcp` / `lantern.local`)
+- [x] Persistent stored-file reload after restart
+- [x] Cross-restart upload resume within a bounded TTL window
+- [x] Auto-start on boot (`systemd`)
+- [x] Chunk size observability and tuning on Pi hardware
+- [x] ARM binary cross-compilation
 
 Planning docs:
 
