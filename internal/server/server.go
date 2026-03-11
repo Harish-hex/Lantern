@@ -60,7 +60,7 @@ func New(cfg config.Config) (*Server, error) {
 // Bridge returns a web.Bridge wired to this server's internal subsystems.
 // Call this after New() and before Start().
 func (s *Server) Bridge() *Bridge {
-		return &Bridge{
+	return &Bridge{
 		storage: s.storage,
 		upload:  s.upload,
 		cfg:     s.cfg,

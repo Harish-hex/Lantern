@@ -13,10 +13,10 @@ type SessionState int
 
 const (
 	StateNew       SessionState = iota
-	StateActive                        // Actively transferring
-	StatePaused                        // Client disconnected gracefully; resumable
-	StateCompleted                     // All files transferred & verified
-	StateFailed                        // Unrecoverable error
+	StateActive                 // Actively transferring
+	StatePaused                 // Client disconnected gracefully; resumable
+	StateCompleted              // All files transferred & verified
+	StateFailed                 // Unrecoverable error
 )
 
 func (s SessionState) String() string {
@@ -27,7 +27,7 @@ func (s SessionState) String() string {
 type FileTransferState int
 
 const (
-	FileStatePending    FileTransferState = iota
+	FileStatePending FileTransferState = iota
 	FileStateReceiving
 	FileStateVerifying
 	FileStateComplete

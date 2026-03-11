@@ -37,7 +37,7 @@ func TestRestoreSessionFromSnapshotRehydratesHasherAndProgress(t *testing.T) {
 				Size:         8,
 				ChunkSize:    4,
 				TotalChunks:  2,
-				ChecksumFull: "sha256:9c56cc51b374c3ba189210d5b91871a5df129f3f21257d2f3c048ceaf41b77ad",
+				ChecksumFull: "sha256:9c56cc51b374c3ba189210d5b6d4bf57790d351c96c47c02190ecf1e430635ab",
 			},
 			TempPath:  tempPath,
 			State:     FileStateReceiving.String(),
