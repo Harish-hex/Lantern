@@ -90,6 +90,17 @@ Out of scope for this phase:
 - encrypted transport
 - protocol redesign for full bidirectional resume negotiation
 
+## Phase 2.5 Bridge Scope (between Phase 2 and Phase 3)
+
+This bridge phase focuses on mobile-first onboarding and browser transfer parity:
+
+1. terminal QR output at server startup for the HTTP dashboard
+2. startup output that prints both raw-IP and mDNS dashboard URLs
+3. dashboard upload transport moved to WebSocket chunked transfer with ACK/NAK + retry
+4. keep SSE for file list event updates to avoid unnecessary migration complexity
+
+This keeps Phase 3 focused on collaboration features (chat/presence/notifications) rather than onboarding and upload transport upgrades.
+
 ## 1. mDNS Discovery
 
 ### Goal

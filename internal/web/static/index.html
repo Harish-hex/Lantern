@@ -455,6 +455,9 @@ header .badge {
 
   // ── State ───────────────────────────────────────────────────
   let files = [];
+  const WS_CHUNK_SIZE = 256 * 1024;
+  const WS_MAX_RETRIES = 3;
+  let uploadQueue = Promise.resolve();
 
   // ── Helpers ─────────────────────────────────────────────────
 
@@ -557,6 +560,33 @@ header .badge {
     }
   }
 
+  function wsURL(path) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}${path}`;
+  }
+
+  function buildChunkFrame(seq, flags, chunkBuffer) {
+    const payload = new Uint8Array(chunkBuffer);
+    const frame = new Uint8Array(5 + payload.length);
+    const dv = new DataView(frame.buffer);
+    dv.setUint32(0, seq, false); // big-endian
+    frame[4] = flags;
+    frame.set(payload, 5);
+    return frame.buffer;
+  }
+
+  function readBlobAsArrayBuffer(blob) {
+    if (blob.arrayBuffer) {
+      return blob.arrayBuffer();
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('FileReader failed'));
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
   async function uploadFile(file) {
     const id = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     const item = document.createElement('div');
@@ -575,33 +605,40 @@ header .badge {
     const pctEl = item.querySelector('.pct');
     const iconEl = item.querySelector('.status-icon');
 
-    const xhr = new XMLHttpRequest();
-    const fd = new FormData();
-    fd.append('file', file);
-
     return new Promise((resolve) => {
-      xhr.upload.addEventListener('progress', e => {
-        if (e.lengthComputable) {
-          const p = Math.round(e.loaded / e.total * 100);
-          fill.style.width = p + '%';
-          pctEl.textContent = p + '%';
-        }
-      });
+      let completed = false;
+      let ws = null;
+      let openTimer = null;
+      let chunkTimer = null;
+      const totalChunks = Math.max(1, Math.ceil(file.size / WS_CHUNK_SIZE));
+      const retries = new Map();
+      let nextSeq = 1;
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
+      const finish = (ok, msg) => {
+        if (completed) return;
+        completed = true;
+        if (openTimer) {
+          clearTimeout(openTimer);
+          openTimer = null;
+        }
+        if (chunkTimer) {
+          clearTimeout(chunkTimer);
+          chunkTimer = null;
+        }
+        if (ok) {
           iconEl.textContent = '✅';
           fill.style.width = '100%';
           pctEl.textContent = '100%';
           fill.style.background = 'linear-gradient(90deg, #34d399, #10b981)';
-          toast('✅', `Uploaded ${file.name}`);
+          toast('✅', msg || `Uploaded ${file.name}`);
           fetchFiles();
         } else {
           iconEl.textContent = '❌';
           pctEl.textContent = 'err';
           fill.style.background = 'var(--red)';
-          toast('❌', `Failed: ${file.name}`);
+          toast('❌', msg || `Failed: ${file.name}`);
         }
+
         setTimeout(() => {
           item.style.transition = 'opacity 0.3s';
           item.style.opacity = '0';
@@ -610,19 +647,173 @@ header .badge {
             if (!uploadProgress.children.length) uploadProgress.classList.remove('active');
           }, 300);
         }, 2000);
-        resolve();
-      });
 
-      xhr.addEventListener('error', () => {
-        iconEl.textContent = '❌';
-        pctEl.textContent = 'err';
-        toast('❌', `Network error: ${file.name}`);
+        try { ws.close(); } catch (_) {}
         resolve();
-      });
+      };
 
-      xhr.open('POST', '/api/upload');
-      xhr.send(fd);
+      async function sendChunk(seq, retransmit) {
+        if (completed) return;
+        if (seq < 1 || seq > totalChunks) return;
+
+        const start = (seq - 1) * WS_CHUNK_SIZE;
+        const end = Math.min(file.size, start + WS_CHUNK_SIZE);
+        const buffer = await readBlobAsArrayBuffer(file.slice(start, end));
+        let flags = 0;
+        if (seq === totalChunks) flags |= 1;      // LAST_CHUNK
+        if (retransmit) flags |= (1 << 2);        // RETRANSMIT
+
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error('socket not open');
+        }
+        ws.send(buildChunkFrame(seq, flags, buffer));
+        if (chunkTimer) clearTimeout(chunkTimer);
+        chunkTimer = setTimeout(() => {
+          finish(false, `Chunk ACK timeout: ${file.name}`);
+        }, 10000);
+      }
+
+      try {
+        ws = new WebSocket(wsURL('/ws/upload'));
+      } catch (e) {
+        finish(false, `WebSocket init failed: ${file.name}`);
+        return;
+      }
+
+      ws.binaryType = 'arraybuffer';
+
+      openTimer = setTimeout(() => {
+        finish(false, `WebSocket timeout: ${file.name}`);
+      }, 10000);
+
+      ws.onopen = () => {
+        console.log('[lantern] ws: connected, sending start frame');
+        try {
+          ws.send(JSON.stringify({
+            type: 'start',
+            meta: {
+              filename: file.name,
+              size: file.size,
+              mime_type: file.type || 'application/octet-stream',
+              checksum_full: '',
+              chunk_size: WS_CHUNK_SIZE,
+              total_chunks: totalChunks,
+              file_index: 0,
+              total_files: 1,
+              max_downloads: 0,
+              ttl_seconds: 0
+            }
+          }));
+        } catch (_) {
+          finish(false, `Start failed: ${file.name}`);
+        }
+      };
+
+      ws.onmessage = async (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch (_) {
+          console.error('[lantern] ws: invalid JSON from server');
+          finish(false, `Invalid server response for ${file.name}`);
+          return;
+        }
+        console.log('[lantern] ws msg:', msg.type, 'seq:', msg.seq);
+
+        if (msg.type === 'busy') {
+          finish(false, `Server busy: ${file.name}`);
+          return;
+        }
+        if (msg.type === 'error') {
+          finish(false, msg.message || `Upload failed: ${file.name}`);
+          return;
+        }
+        if (msg.type === 'complete') {
+          finish(true, `Uploaded ${file.name}`);
+          return;
+        }
+
+        if (msg.type === 'ack') {
+          if (openTimer) {
+            clearTimeout(openTimer);
+            openTimer = null;
+          }
+          if (chunkTimer) {
+            clearTimeout(chunkTimer);
+            chunkTimer = null;
+          }
+
+          // Normalise: treat missing/undefined seq as 0
+          const ackSeq = typeof msg.seq === 'number' ? msg.seq : 0;
+
+          if (ackSeq > 0) {
+            const p = Math.round((ackSeq / totalChunks) * 100);
+            fill.style.width = p + '%';
+            pctEl.textContent = p + '%';
+          }
+
+          if (ackSeq === 0) {
+            console.log('[lantern] ws: ready ack, sending first chunk');
+            try {
+              await sendChunk(1, false);
+            } catch (err) {
+              console.error('[lantern] first chunk send failed:', err);
+              finish(false, `First chunk failed: ${file.name}`);
+            }
+            return;
+          }
+
+          nextSeq = ackSeq + 1;
+          if (nextSeq <= totalChunks) {
+            try {
+              await sendChunk(nextSeq, false);
+            } catch (err) {
+              console.error('[lantern] chunk send failed:', err);
+              finish(false, `Chunk send failed: ${file.name}`);
+            }
+          }
+          return;
+        }
+
+        if (msg.type === 'nak') {
+          const seq = Number(msg.seq || 0);
+          if (seq <= 0 || seq > totalChunks) {
+            finish(false, `Protocol error for ${file.name}`);
+            return;
+          }
+          const attempt = (retries.get(seq) || 0) + 1;
+          retries.set(seq, attempt);
+          if (attempt > WS_MAX_RETRIES) {
+            finish(false, `Retry limit reached: ${file.name}`);
+            return;
+          }
+          try {
+            await sendChunk(seq, true);
+          } catch (err) {
+            console.error('retransmit failed:', err);
+            finish(false, `Retransmit failed: ${file.name}`);
+          }
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.error('[lantern] ws error:', e);
+        finish(false, `Network error: ${file.name}`);
+      };
+
+      ws.onclose = (e) => {
+        console.log('[lantern] ws closed, code:', e.code, 'reason:', e.reason);
+        if (!completed) finish(false, `Connection closed: ${file.name}`);
+      };
     });
+  }
+
+  function enqueueUpload(file) {
+    uploadQueue = uploadQueue
+      .then(() => uploadFile(file))
+      .catch(err => {
+        console.error('upload queue error:', err);
+      });
   }
 
   async function deleteFile(id) {
@@ -667,7 +858,7 @@ header .badge {
   dropzone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
     const chosen = Array.from(fileInput.files);
-    if (chosen.length) chosen.forEach(f => uploadFile(f));
+    if (chosen.length) chosen.forEach(f => enqueueUpload(f));
     fileInput.value = '';
   });
 
@@ -679,7 +870,7 @@ header .badge {
   );
   dropzone.addEventListener('drop', e => {
     const dropped = Array.from(e.dataTransfer.files);
-    if (dropped.length) dropped.forEach(f => uploadFile(f));
+    if (dropped.length) dropped.forEach(f => enqueueUpload(f));
   });
 
   // ── Event delegation ────────────────────────────────────────

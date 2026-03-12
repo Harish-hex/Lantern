@@ -10,6 +10,8 @@ package server
 //   internal/protocol and is not replicated here.
 
 import (
+	"time"
+
 	"github.com/Harish-hex/Lantern/internal/config"
 	"github.com/Harish-hex/Lantern/internal/protocol"
 )
@@ -35,6 +37,13 @@ func (b *Bridge) Stats() StatsSnapshot {
 		return StatsSnapshot{}
 	}
 	return b.stats.Snapshot()
+}
+
+func (b *Bridge) RecordUpload(fileID, filename string, bytes int64, chunkSize uint32, startedAt time.Time) {
+	if b.stats == nil {
+		return
+	}
+	b.stats.RecordUpload(fileID, filename, bytes, chunkSize, startedAt)
 }
 
 // ── Storage (read) ───────────────────────────────────────────────────────────

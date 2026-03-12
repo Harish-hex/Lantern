@@ -55,13 +55,14 @@ func New(bridge *server.Bridge) *Server {
 	mux.HandleFunc("/api/files/", ws.handleFileByID)
 	mux.HandleFunc("/api/stats", ws.handleStats)
 	mux.HandleFunc("/api/upload", ws.handleUpload)
+	mux.HandleFunc("/ws/upload", ws.handleUploadWS)
 
 	// SSE live events
 	mux.HandleFunc("/events", ws.hub.serveSSE)
 
 	// SPA static assets (embedded)
 	staticRoot, _ := fs.Sub(staticFS, "static")
-	mux.Handle("/", http.FileServer(http.FS(staticRoot)))
+	mux.Handle("/", noCache(http.FileServer(http.FS(staticRoot))))
 
 	cfg := bridge.Cfg()
 	ws.httpSrv = &http.Server{
@@ -100,6 +101,15 @@ func jsonErr(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ── /api/files ────────────────────────────────────────────────────────────────
