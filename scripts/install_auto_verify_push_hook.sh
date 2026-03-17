@@ -6,6 +6,12 @@ hooks_dir="$(git -C "$repo_root" rev-parse --git-dir)/hooks"
 hook_path="$hooks_dir/post-commit"
 
 mkdir -p "$hooks_dir"
+if [[ -f "$hook_path" ]]; then
+  backup="${hook_path}.bak-$(date +%s)"
+  cp "$hook_path" "$backup"
+  echo "Backed up existing post-commit hook to $backup"
+fi
+
 cat >"$hook_path" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
