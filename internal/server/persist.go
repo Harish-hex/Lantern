@@ -189,6 +189,19 @@ func (s *Server) restorePersistedState() error {
 	if err := s.restoreSessions(); err != nil {
 		return err
 	}
+	if err := s.restoreComputeState(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) restoreComputeState() error {
+	if s.compute == nil {
+		return nil
+	}
+	if err := s.compute.Restore(); err != nil {
+		return fmt.Errorf("load compute state: %w", err)
+	}
 	return nil
 }
 

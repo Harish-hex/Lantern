@@ -40,6 +40,38 @@ type StoredFileSnapshot struct {
 	ExpiresAt     time.Time             `json:"expires_at"`
 }
 
+type ComputeJobSnapshot struct {
+	ID             string    `json:"id"`
+	Type           string    `json:"type"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	TotalTasks     int       `json:"total_tasks"`
+	CompletedTasks int       `json:"completed_tasks"`
+	FailedTasks    int       `json:"failed_tasks"`
+}
+
+type ComputeTaskSnapshot struct {
+	ID         string          `json:"id"`
+	JobID      string          `json:"job_id"`
+	WorkerID   string          `json:"worker_id,omitempty"`
+	Status     string          `json:"status"`
+	Attempt    int             `json:"attempt"`
+	LeaseUntil time.Time       `json:"lease_until,omitempty"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	Checksum   string          `json:"checksum,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Payload    json.RawMessage `json:"payload,omitempty"`
+}
+
+type ComputeWorkerSnapshot struct {
+	ID           string    `json:"id"`
+	Status       string    `json:"status"`
+	LastSeen     time.Time `json:"last_seen"`
+	LeaseUntil   time.Time `json:"lease_until,omitempty"`
+	Capabilities []string  `json:"capabilities,omitempty"`
+}
+
 type Store interface {
 	SaveSession(*SessionSnapshot) error
 	DeleteSession(id string) error
@@ -48,12 +80,28 @@ type Store interface {
 	SaveStoredFile(*StoredFileSnapshot) error
 	DeleteStoredFile(id string) error
 	LoadStoredFiles() ([]*StoredFileSnapshot, error)
+
+	SaveComputeJob(*ComputeJobSnapshot) error
+	DeleteComputeJob(id string) error
+	LoadComputeJobs() ([]*ComputeJobSnapshot, error)
+
+	SaveComputeTask(*ComputeTaskSnapshot) error
+	DeleteComputeTask(id string) error
+	LoadComputeTasks() ([]*ComputeTaskSnapshot, error)
+
+	SaveComputeWorker(*ComputeWorkerSnapshot) error
+	DeleteComputeWorker(id string) error
+	LoadComputeWorkers() ([]*ComputeWorkerSnapshot, error)
 }
 
 type JSONStore struct {
 	baseDir     string
 	sessionsDir string
 	filesDir    string
+	computeDir  string
+	jobsDir     string
+	tasksDir    string
+	workersDir  string
 	mu          sync.Mutex
 }
 
@@ -62,8 +110,12 @@ func NewJSONStore(baseDir string) (*JSONStore, error) {
 		baseDir:     baseDir,
 		sessionsDir: filepath.Join(baseDir, "sessions"),
 		filesDir:    filepath.Join(baseDir, "files"),
+		computeDir:  filepath.Join(baseDir, "compute"),
+		jobsDir:     filepath.Join(baseDir, "compute", "jobs"),
+		tasksDir:    filepath.Join(baseDir, "compute", "tasks"),
+		workersDir:  filepath.Join(baseDir, "compute", "workers"),
 	}
-	for _, dir := range []string{js.baseDir, js.sessionsDir, js.filesDir} {
+	for _, dir := range []string{js.baseDir, js.sessionsDir, js.filesDir, js.computeDir, js.jobsDir, js.tasksDir, js.workersDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("create index dir %s: %w", dir, err)
 		}
@@ -106,6 +158,75 @@ func (s *JSONStore) LoadStoredFiles() ([]*StoredFileSnapshot, error) {
 	var out []*StoredFileSnapshot
 	if err := s.loadDir(s.filesDir, func(data []byte) error {
 		var snap StoredFileSnapshot
+		if err := json.Unmarshal(data, &snap); err != nil {
+			return err
+		}
+		out = append(out, &snap)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *JSONStore) SaveComputeJob(snapshot *ComputeJobSnapshot) error {
+	return s.write(filepath.Join(s.jobsDir, snapshot.ID+".json"), snapshot)
+}
+
+func (s *JSONStore) DeleteComputeJob(id string) error {
+	return s.remove(filepath.Join(s.jobsDir, id+".json"))
+}
+
+func (s *JSONStore) LoadComputeJobs() ([]*ComputeJobSnapshot, error) {
+	var out []*ComputeJobSnapshot
+	if err := s.loadDir(s.jobsDir, func(data []byte) error {
+		var snap ComputeJobSnapshot
+		if err := json.Unmarshal(data, &snap); err != nil {
+			return err
+		}
+		out = append(out, &snap)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *JSONStore) SaveComputeTask(snapshot *ComputeTaskSnapshot) error {
+	return s.write(filepath.Join(s.tasksDir, snapshot.ID+".json"), snapshot)
+}
+
+func (s *JSONStore) DeleteComputeTask(id string) error {
+	return s.remove(filepath.Join(s.tasksDir, id+".json"))
+}
+
+func (s *JSONStore) LoadComputeTasks() ([]*ComputeTaskSnapshot, error) {
+	var out []*ComputeTaskSnapshot
+	if err := s.loadDir(s.tasksDir, func(data []byte) error {
+		var snap ComputeTaskSnapshot
+		if err := json.Unmarshal(data, &snap); err != nil {
+			return err
+		}
+		out = append(out, &snap)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *JSONStore) SaveComputeWorker(snapshot *ComputeWorkerSnapshot) error {
+	return s.write(filepath.Join(s.workersDir, snapshot.ID+".json"), snapshot)
+}
+
+func (s *JSONStore) DeleteComputeWorker(id string) error {
+	return s.remove(filepath.Join(s.workersDir, id+".json"))
+}
+
+func (s *JSONStore) LoadComputeWorkers() ([]*ComputeWorkerSnapshot, error) {
+	var out []*ComputeWorkerSnapshot
+	if err := s.loadDir(s.workersDir, func(data []byte) error {
+		var snap ComputeWorkerSnapshot
 		if err := json.Unmarshal(data, &snap); err != nil {
 			return err
 		}

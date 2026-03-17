@@ -388,9 +388,76 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 	switch ctrl.Type {
 	case protocol.CtrlDownload:
 		h.handleDownload(conn, hdr, ctrl)
+	case protocol.CtrlWorkerHello:
+		h.handleWorkerHello(conn, hdr, ctrl)
+	case protocol.CtrlWorkerHeartbeat:
+		h.handleWorkerHeartbeat(conn, hdr, ctrl)
 	default:
 		log.Printf("[handler] session %x: unhandled control type: %s", hdr.SessionID, ctrl.Type)
 	}
+}
+
+func (h *Handler) handleWorkerHello(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+
+	h.server.compute.RegisterWorker(ctrl.WorkerID, ctrl.Capabilities, time.Now())
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:     protocol.CtrlACK,
+		WorkerID: ctrl.WorkerID,
+		Message:  "worker registered",
+	})
+}
+
+func (h *Handler) handleWorkerHeartbeat(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+
+	if ok := h.server.compute.HeartbeatWorker(ctrl.WorkerID, time.Now()); !ok {
+		h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+			Type:     protocol.CtrlNAK,
+			WorkerID: ctrl.WorkerID,
+			Message:  "worker not registered",
+		})
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:       protocol.CtrlACK,
+		WorkerID:   ctrl.WorkerID,
+		RetryAfter: int(h.cfg.ComputeHeartbeat.Seconds()),
+		Message:    "heartbeat accepted",
+	})
+}
+
+func (h *Handler) computeTokenValid(token string) bool {
+	if !h.cfg.ComputeRequireToken {
+		return true
+	}
+	if h.cfg.ComputeWorkerAuthToken == "" {
+		return false
+	}
+	return token == h.cfg.ComputeWorkerAuthToken
 }
 
 // handleDownload serves a stored file to the client.

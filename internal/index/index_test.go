@@ -1,6 +1,7 @@
 package index
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -98,5 +99,84 @@ func TestJSONStoreRoundTrip(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Fatalf("LoadStoredFiles after delete len = %d, want 0", len(files))
+	}
+}
+
+func TestJSONStoreComputeRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	job := &ComputeJobSnapshot{
+		ID:         "job-1",
+		Type:       "edge_tiles_v1",
+		Status:     "queued",
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+		TotalTasks: 4,
+	}
+	if err := store.SaveComputeJob(job); err != nil {
+		t.Fatalf("SaveComputeJob: %v", err)
+	}
+
+	task := &ComputeTaskSnapshot{
+		ID:         "task-1",
+		JobID:      job.ID,
+		Status:     "leased",
+		Attempt:    1,
+		WorkerID:   "worker-a",
+		LeaseUntil: time.Now().Add(45 * time.Second).UTC(),
+		UpdatedAt:  time.Now().UTC(),
+		Payload:    json.RawMessage(`{"tile_x":0,"tile_y":1}`),
+	}
+	if err := store.SaveComputeTask(task); err != nil {
+		t.Fatalf("SaveComputeTask: %v", err)
+	}
+
+	worker := &ComputeWorkerSnapshot{
+		ID:           "worker-a",
+		Status:       "ready",
+		LastSeen:     time.Now().UTC(),
+		LeaseUntil:   time.Now().Add(45 * time.Second).UTC(),
+		Capabilities: []string{"edge_tiles_v1"},
+	}
+	if err := store.SaveComputeWorker(worker); err != nil {
+		t.Fatalf("SaveComputeWorker: %v", err)
+	}
+
+	jobs, err := store.LoadComputeJobs()
+	if err != nil {
+		t.Fatalf("LoadComputeJobs: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].ID != "job-1" {
+		t.Fatalf("LoadComputeJobs = %+v, want [job-1]", jobs)
+	}
+
+	tasks, err := store.LoadComputeTasks()
+	if err != nil {
+		t.Fatalf("LoadComputeTasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].WorkerID != "worker-a" {
+		t.Fatalf("LoadComputeTasks = %+v, want worker-a", tasks)
+	}
+
+	workers, err := store.LoadComputeWorkers()
+	if err != nil {
+		t.Fatalf("LoadComputeWorkers: %v", err)
+	}
+	if len(workers) != 1 || workers[0].Status != "ready" {
+		t.Fatalf("LoadComputeWorkers = %+v, want ready", workers)
+	}
+
+	if err := store.DeleteComputeTask(task.ID); err != nil {
+		t.Fatalf("DeleteComputeTask: %v", err)
+	}
+	if err := store.DeleteComputeWorker(worker.ID); err != nil {
+		t.Fatalf("DeleteComputeWorker: %v", err)
+	}
+	if err := store.DeleteComputeJob(job.ID); err != nil {
+		t.Fatalf("DeleteComputeJob: %v", err)
 	}
 }

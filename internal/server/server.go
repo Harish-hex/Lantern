@@ -21,6 +21,7 @@ type Server struct {
 	download *Semaphore
 	stats    *Stats
 	idx      index.Store
+	compute  *Coordinator
 	quit     chan struct{}
 }
 
@@ -43,6 +44,7 @@ func New(cfg config.Config) (*Server, error) {
 		upload:  NewSemaphore(cfg.MaxUploadConcurrency),
 		stats:   NewStats(),
 		idx:     idx,
+		compute: NewCoordinator(cfg, idx),
 		quit:    make(chan struct{}),
 	}
 
@@ -125,10 +127,18 @@ func (s *Server) cleanupLoop() {
 		case <-ticker.C:
 			s.reapExpiredFiles()
 			s.reapIdleSessions()
+			s.reapComputeWorkers()
 		case <-s.quit:
 			return
 		}
 	}
+}
+
+func (s *Server) reapComputeWorkers() {
+	if s.compute == nil {
+		return
+	}
+	s.compute.ReapStaleWorkers(time.Now())
 }
 
 // reapExpiredFiles deletes files past their TTL or download limit.

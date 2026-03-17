@@ -1,5 +1,10 @@
 package protocol
 
+import (
+	"encoding/json"
+	"time"
+)
+
 // ----- Message Types (Header.MsgType) -----
 
 const (
@@ -30,6 +35,14 @@ const (
 	CtrlComplete        = "COMPLETE"
 	CtrlReject          = "REJECT"
 	CtrlPartialComplete = "PARTIAL_COMPLETE"
+	CtrlWorkerHello     = "WORKER_HELLO"
+	CtrlWorkerHeartbeat = "WORKER_HEARTBEAT"
+	CtrlJobSubmit       = "JOB_SUBMIT"
+	CtrlTaskAssign      = "TASK_ASSIGN"
+	CtrlTaskResult      = "TASK_RESULT"
+	CtrlTaskFail        = "TASK_FAIL"
+	CtrlTaskClaim       = "TASK_CLAIM"
+	CtrlTaskLease       = "TASK_LEASE"
 )
 
 // ----- Error Codes -----
@@ -67,4 +80,15 @@ type ControlPayload struct {
 	RetryAfter int      `json:"retry_after,omitempty"`  // Seconds, used with BUSY
 	Succeeded  []string `json:"succeeded,omitempty"`    // For PARTIAL_COMPLETE
 	Failed     []string `json:"failed,omitempty"`       // For PARTIAL_COMPLETE
+
+	WorkerID     string          `json:"worker_id,omitempty"`
+	JobID        string          `json:"job_id,omitempty"`
+	TaskID       string          `json:"task_id,omitempty"`
+	Token        string          `json:"token,omitempty"`
+	Capabilities []string        `json:"capabilities,omitempty"`
+	Status       string          `json:"status,omitempty"`
+	Attempt      int             `json:"attempt,omitempty"`
+	LeaseUntil   time.Time       `json:"lease_until,omitempty"`
+	Checksum     string          `json:"checksum,omitempty"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
 }

@@ -1,5 +1,6 @@
 # Binary
 lantern
+bin/
 
 # OS
 .DS_Store
@@ -10,3 +11,6 @@ lantern
 
 # Test artifacts
 test-storage/
+
+# Local scratch copies
+Lantern-1/

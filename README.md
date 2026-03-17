@@ -4,13 +4,13 @@
 
 # 🔦 Lantern
 
-**Portable LAN file sharing hub. No internet. No accounts. No friction.**
+**Portable LAN compute mesh with built-in file transfer. No internet. No accounts. No friction.**
 
-Share files between any device on your network through a browser — and carry the whole thing in your pocket on a Raspberry Pi.
+Turn spare machines on your local network into a lightweight pool for coordination, task dispatch, and data movement you control.
 
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Phase%201a-orange?style=flat-square)]()
+[![Status](https://img.shields.io/badge/Status-Compute%20Mesh%20In%20Progress-orange?style=flat-square)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)]()
 
 [Features](#features) · [How It Works](#how-it-works) · [Getting Started](#getting-started) · [Protocol](#protocol-design) · [Roadmap](#roadmap)
@@ -21,23 +21,31 @@ Share files between any device on your network through a browser — and carry t
 
 ## The Problem
 
-AirDrop is Apple-only. Bluetooth is slow. You shouldn't have to email yourself a file or plug in a USB stick just to move something between your phone and laptop. And when you need to share files, chat, or collaborate with multiple people in the same room, you're forced to rely on cloud services that need internet.
+Most personal and small-team compute is stranded. Your laptop, desktop, Raspberry Pi, and home server all have cycles to spare, but stitching them together usually means cloud infrastructure, brittle orchestration, or heavyweight distributed systems that are overkill for a local network.
 
-**Lantern** is a self-hosted hub that runs on your local network. Any device on the same WiFi opens a browser and can share files, chat with others, and receive notifications. No app installs. No cloud. No accounts. Just works.
+**Lantern** is a self-hosted LAN node that aims to make local computation sharing simple first: discover peers, register workers, lease work, recover from disconnects, and move the required payloads around the network. File sharing is still an important part of the story, but it supports the broader goal of turning nearby devices into a practical compute pool.
 
-And when you put it on a Raspberry Pi Zero 2W, the entire hub fits in your pocket.
+And when you put it on a Raspberry Pi Zero 2W, the coordinator can travel with you.
 
 ---
 
 ## Features
 
-### File Sharing (Available Now)
+### Compute Coordination (In Progress, Already in the Codebase)
+- **Worker registration and heartbeats** — LAN workers can register capabilities and maintain leases with the coordinator
+- **Task leasing model** — work can be assigned to workers with lease expiry and retry-aware recovery semantics
+- **Persistent coordinator state** — jobs, tasks, and worker snapshots are stored so the system can recover state after restart
+- **Failure handling** — stale workers are reaped and leased tasks can be returned to the queue
+- **Operator controls** — compute behavior is configurable from the CLI with toggles for token requirements, lease TTLs, heartbeat intervals, retries, and task sizing
+- **Built for local-first experimentation** — lightweight enough to run on a laptop or Raspberry Pi without external services
+
+### File Transfer (Available Now)
 - **Browser-first** — any device with a browser can upload and download, no app install needed
 - **Custom binary protocol** — purpose-built TCP protocol with chunked streaming, per-chunk CRC-32 integrity, and full-file SHA-256 verification
 - **Resumable transfers** — WiFi drop mid-transfer? Reconnect and continue from where you left off
-- **Multi-file sessions** — drag 10 photos, one connection handles all of them
+- **Multi-file sessions** — drag 10 files, one connection handles all of them
 - **Hybrid storage** — files live on the server temporarily, auto-cleaned by TTL or download count
-- **Bounded concurrency** — configurable upload/download limits so the Pi doesn't get overwhelmed
+- **Bounded concurrency** — configurable upload/download limits so the coordinator does not get overwhelmed
 
 ### Communication & Collaboration (Coming Soon)
 - **LAN chat** — real-time messaging between all connected devices on the network
@@ -57,21 +65,21 @@ And when you put it on a Raspberry Pi Zero 2W, the entire hub fits in your pocke
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              Lantern Server (your PC / Pi)           │
+│            Lantern Coordinator (your PC / Pi)        │
 │                                                      │
-│   TCP :9723  ────────────────  Raw protocol          │
-│   HTTP :9724 ────────────────  Browser UI            │
-│   WebSocket  ────────────────  Live progress         │
+│   TCP :9723  ────────────────  Worker + transfer RPC │
+│   HTTP :9724 ────────────────  Dashboard / browser   │
+│   WebSocket  ────────────────  Live upload progress  │
 └─────────────────────────────────────────────────────┘
-         ▲                  ▲
-         │                  │
-   CLI client          Any browser
-  (Go binary)       (phone, laptop...)
+         ▲                  ▲                    ▲
+         │                  │                    │
+   Worker / CLI        Browser client       Other LAN nodes
+    (Go binary)        (ops + transfer)     (future compute)
 ```
 
-**Upload flow:** Client connects → handshake → announces file metadata → streams chunks → server verifies integrity → file stored with TTL → download link ready
+**Compute flow today:** Worker connects → authenticates if required → registers capabilities → sends heartbeats → coordinator tracks leases and reaps stale workers → persisted state survives restart
 
-**Download flow:** Browser requests file by ID → server streams chunks → client verifies → server tracks download count → auto-deletes when exhausted
+**Transfer flow today:** Client connects → handshake → announces file metadata → streams chunks → coordinator verifies integrity → file stored with TTL/download policy → browser or CLI can retrieve it later
 
 ---
 
@@ -79,32 +87,29 @@ And when you put it on a Raspberry Pi Zero 2W, the entire hub fits in your pocke
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.26.1+
 - A local network (or just localhost for testing)
 
 ### Build
 
 ```bash
-git clone https://github.com/yourname/lantern.git
+git clone https://github.com/Harish-hex/Lantern.git
 cd lantern
 
-# Build server
-go build -o bin/lantern-server ./cmd/server
-
-# Build CLI client
-go build -o bin/lantern-client ./cmd/client
+# Build the single Lantern binary
+go build -o bin/lantern ./cmd/lantern
 ```
 
 ### Run the Server
 
 ```bash
-./bin/lantern-server serve
+./bin/lantern serve
 
 # With custom ports
-./bin/lantern-server serve --tcp-port 9723 --http-port 9724
+./bin/lantern serve --port 9723 --http-port 9724
 
 # TCP only (no browser UI)
-./bin/lantern-server serve --http-port 0
+./bin/lantern serve --http-port -1
 ```
 
 On startup, you'll see:
@@ -128,26 +133,26 @@ On startup, you'll see:
 
 ```bash
 # Send a single file
-./bin/lantern-client send ./photo.jpg
+./bin/lantern send ./photo.jpg
 
 # Send multiple files
-./bin/lantern-client send ./file1.pdf ./file2.zip ./file3.png
+./bin/lantern send ./file1.pdf ./file2.zip ./file3.png
 
 # Send with custom TTL and download limit
-./bin/lantern-client send ./video.mp4 --ttl 3600 --max-downloads 3
+./bin/lantern send --ttl 3600 --max-downloads 3 ./video.mp4
 ```
 
 ### Receive a File (CLI)
 
 ```bash
-./bin/lantern-client get <file-id> --output ./downloads/
+./bin/lantern get <file-id> --dest ./downloads/
 ```
 
 ---
 
 ## Protocol Design
 
-Lantern uses a custom binary protocol over TCP — not HTTP, not WebRTC. Here's why and how.
+Lantern uses a custom binary protocol over TCP for both transfer and coordinator control traffic. The same transport gives the project a foundation for resumable file movement and lightweight compute orchestration without depending on external infrastructure.
 
 ### Packet Structure
 
@@ -174,10 +179,10 @@ Lantern uses a custom binary protocol over TCP — not HTTP, not WebRTC. Here's 
 
 | Type | Code | Direction | Purpose |
 |---|---|---|---|
-| `HANDSHAKE` | `0x01` | Client → Server | Initiate or resume session |
+| `HANDSHAKE` | `0x01` | Client → Server | Initiate or resume a session |
 | `FILE_HEADER` | `0x02` | Bidirectional | Announce file metadata |
-| `CHUNK` | `0x03` | Bidirectional | One piece of a file |
-| `CONTROL` | `0x04` | Bidirectional | ACK, NAK, ERROR, STATUS |
+| `CHUNK` | `0x03` | Bidirectional | One piece of a file payload |
+| `CONTROL` | `0x04` | Bidirectional | ACK, NAK, ERROR, STATUS, and compute control messages |
 
 ### FLAGS Byte
 
@@ -202,8 +207,7 @@ Lantern uses a custom binary protocol over TCP — not HTTP, not WebRTC. Here's 
 ```
 lantern/
 ├── cmd/
-│   ├── server/main.go          ← Server entry point
-│   └── client/main.go          ← CLI client
+│   └── lantern/main.go         ← Single CLI entry point (`serve`, `send`, `get`)
 │
 ├── internal/
 │   ├── protocol/
@@ -215,21 +219,19 @@ lantern/
 │   │
 │   ├── server/
 │   │   ├── server.go           ← TCP listener, accept loop
-│   │   ├── session.go          ← Session state machine
-│   │   ├── store.go            ← Session registry (map + mutex)
-│   │   ├── transfer.go         ← Upload/download logic
+│   │   ├── handler.go          ← Protocol message handling
+│   │   ├── compute.go          ← Compute coordinator state and worker leasing
+│   │   ├── persist.go          ← File/session persistence + recovery
 │   │   ├── storage.go          ← File storage, disk checks
 │   │   ├── cleanup.go          ← TTL + download-count reaper
-│   │   └── semaphore.go        ← Bounded concurrency
+│   │   └── stats.go            ← Runtime transfer stats
 │   │
 │   ├── client/
-│   │   ├── client.go           ← TCP connect, session management
-│   │   ├── sender.go           ← Chunk and send files
-│   │   └── receiver.go         ← Receive and reassemble
+│   │   └── client.go           ← TCP connect, upload, and download logic
 │   │
-│   ├── web/                    ← Phase 1b
-│   │   ├── bridge.go           ← HTTP ↔ internal adapter
-│   │   ├── handler.go          ← HTTP routes + WebSocket
+│   ├── web/
+│   │   ├── server.go           ← HTTP routes, SSE, and embedded static app
+│   │   ├── ws_upload.go        ← WebSocket upload path
 │   │   └── static/index.html   ← Browser UI (embedded)
 │   │
 │   └── config/config.go        ← Server configuration
@@ -244,13 +246,13 @@ lantern/
 
 ```bash
 lantern serve \
-  --tcp-port 9723 \          # Raw TCP port (default: 9723)
-  --http-port 9724 \         # HTTP/WebSocket port (default: 9724, 0 = disabled)
-  --max-uploads 5 \          # Max concurrent uploads
-  --max-downloads 10 \       # Max concurrent downloads
-  --ttl 1800 \               # Default file TTL in seconds (default: 30 min)
-  --max-downloads-per-file 1 \ # Default download limit per file
-  --chunk-size 262144 \      # Chunk size in bytes (default: 256KB)
+  --port 9723 \                   # Raw TCP port (default: 9723)
+  --http-port 9724 \              # HTTP/WebSocket port (default: 9724, -1 = disabled)
+  --max-concurrent 5 \            # Max concurrent uploads
+  --max-download-concurrent 10 \  # Max concurrent downloads
+  --ttl-default 1800 \            # Default file TTL in seconds (default: 1 hour)
+  --default-max-downloads 1 \     # Default download limit per file
+  --chunk-size-kb 256 \           # Chunk size in KiB (default: 256)
   --storage ./lantern-files  # Storage directory
 ```
 
@@ -258,7 +260,20 @@ lantern serve \
 
 ## Roadmap
 
-### ✅ Phase 1a — TCP Core
+### 🔄 Phase 3 — Compute Mesh
+- [x] Worker registration
+- [x] Worker heartbeats and lease tracking
+- [x] Stale worker reaping
+- [x] Persistent compute worker/task snapshots
+- [x] CLI flags for compute coordinator controls
+- [ ] Task creation and dispatch APIs
+- [ ] End-to-end job lifecycle orchestration
+- [ ] Worker execution protocol beyond registration/heartbeat
+- [ ] Dashboard visibility into jobs, tasks, and workers
+- [ ] Capability-aware scheduling
+- [ ] Result collection and artifact management
+
+### ✅ Phase 1a — Transfer Core
 - [x] Custom binary protocol design
 - [x] TCP server with bounded concurrency
 - [x] Chunked file transfer with integrity verification
@@ -273,7 +288,7 @@ lantern serve \
 - [x] Live event stream for browser updates
 - [x] Single binary with embedded static assets
 
-### 📡 Phase 2 — Raspberry Pi Deployment
+### 📡 Phase 2 — Raspberry Pi + LAN Deployment
 - [x] mDNS discovery (`_lantern._tcp` / `lantern.local`)
 - [x] Persistent stored-file reload after restart
 - [x] Cross-restart upload resume within a bounded TTL window
@@ -291,9 +306,13 @@ lantern serve \
 Planning docs:
 
 - [Phase 2 implementation plan](./PHASE2_PLAN.md)
-- [Raspberry Pi deployment guide](./PI_DEPLOYMENT.md)
 
-### 🔒 Phase 3 — Real-Time Communication
+Automation helpers:
+
+- `scripts/install_auto_verify_push_hook.sh` installs a local `post-commit` hook
+- `scripts/auto_verify_push.sh` runs `go test ./...` in the background and pushes the current branch only if verification passes and the worktree stayed clean
+
+### 🔒 Phase 4 — Real-Time Communication
 - [ ] **LAN chat** — group and direct messaging between connected devices
 - [ ] **Push notifications** — server-to-client event broadcasting
 - [ ] **Typing indicators** — real-time user activity signals
@@ -305,7 +324,7 @@ Planning docs:
 - [ ] TLS encryption
 - [ ] Captive portal DNS (hotspot mode)
 
-### 🎯 Phase 4 — Advanced Features
+### 🎯 Phase 5 — Advanced Features
 - [ ] **Screen sharing** — stream viewport over WebRTC with socket signaling
 - [ ] **Collaborative whiteboards** — real-time drawing with conflict resolution
 - [ ] **Live polls/quizzes** — interactive Q&A sessions
