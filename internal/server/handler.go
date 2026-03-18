@@ -388,6 +388,14 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 	switch ctrl.Type {
 	case protocol.CtrlDownload:
 		h.handleDownload(conn, hdr, ctrl)
+	case protocol.CtrlJobSubmit:
+		h.handleJobSubmit(conn, hdr, ctrl)
+	case protocol.CtrlTaskClaim:
+		h.handleTaskClaim(conn, hdr, ctrl)
+	case protocol.CtrlTaskResult:
+		h.handleTaskResult(conn, hdr, ctrl)
+	case protocol.CtrlTaskFail:
+		h.handleTaskFail(conn, hdr, ctrl)
 	case protocol.CtrlWorkerHello:
 		h.handleWorkerHello(conn, hdr, ctrl)
 	case protocol.CtrlWorkerHeartbeat:
@@ -395,6 +403,76 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 	default:
 		log.Printf("[handler] session %x: unhandled control type: %s", hdr.SessionID, ctrl.Type)
 	}
+}
+
+func (h *Handler) handleJobSubmit(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if len(ctrl.Payload) == 0 {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing job payload")
+		return
+	}
+
+	var req ComputeJobSubmit
+	if err := json.Unmarshal(ctrl.Payload, &req); err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid job payload")
+		return
+	}
+
+	job, tasks, err := h.server.compute.SubmitJob(ctrl.JobID, req, time.Now())
+	if err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, err.Error())
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:    protocol.CtrlACK,
+		JobID:   job.ID,
+		Status:  job.Status,
+		Message: fmt.Sprintf("job accepted with %d tasks", tasks),
+	})
+}
+
+func (h *Handler) handleTaskClaim(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+
+	task, ok := h.server.compute.ClaimTask(ctrl.WorkerID, time.Now())
+	if !ok {
+		h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+			Type:       protocol.CtrlNAK,
+			WorkerID:   ctrl.WorkerID,
+			Message:    "no queued tasks",
+			RetryAfter: int(h.cfg.ComputeHeartbeat.Seconds()),
+		})
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:       protocol.CtrlTaskAssign,
+		WorkerID:   ctrl.WorkerID,
+		JobID:      task.JobID,
+		TaskID:     task.ID,
+		Attempt:    task.Attempt,
+		LeaseUntil: task.LeaseUntil,
+		Payload:    task.Payload,
+	})
 }
 
 func (h *Handler) handleWorkerHello(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
@@ -416,6 +494,78 @@ func (h *Handler) handleWorkerHello(conn net.Conn, hdr protocol.Header, ctrl pro
 		Type:     protocol.CtrlACK,
 		WorkerID: ctrl.WorkerID,
 		Message:  "worker registered",
+	})
+}
+
+func (h *Handler) handleTaskResult(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+	if ctrl.TaskID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing task_id")
+		return
+	}
+
+	task, job, err := h.server.compute.CompleteTask(ctrl.WorkerID, ctrl.TaskID, ctrl.Checksum, time.Now())
+	if err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, err.Error())
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:     protocol.CtrlACK,
+		WorkerID: ctrl.WorkerID,
+		JobID:    job.ID,
+		TaskID:   task.ID,
+		Status:   task.Status,
+		Message:  "task completed",
+	})
+}
+
+func (h *Handler) handleTaskFail(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+	if ctrl.TaskID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing task_id")
+		return
+	}
+	if ctrl.Message == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing failure message")
+		return
+	}
+
+	task, job, err := h.server.compute.FailTask(ctrl.WorkerID, ctrl.TaskID, ctrl.Message, ctrl.Checksum, time.Now())
+	if err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, err.Error())
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:     protocol.CtrlACK,
+		WorkerID: ctrl.WorkerID,
+		JobID:    job.ID,
+		TaskID:   task.ID,
+		Status:   task.Status,
+		Message:  "task failed",
 	})
 }
 

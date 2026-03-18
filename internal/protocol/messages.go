@@ -48,12 +48,12 @@ const (
 // ----- Error Codes -----
 
 const (
-	ErrCRCMismatch      = "CRC_MISMATCH"
-	ErrDiskFull         = "DISK_FULL"
-	ErrChunkCountErr    = "CHUNK_COUNT_MISMATCH"
-	ErrIntegrityFailed  = "INTEGRITY_FAILED"
-	ErrFileExpired      = "FILE_EXPIRED"
-	ErrSessionConflict  = "SESSION_CONFLICT"
+	ErrCRCMismatch     = "CRC_MISMATCH"
+	ErrDiskFull        = "DISK_FULL"
+	ErrChunkCountErr   = "CHUNK_COUNT_MISMATCH"
+	ErrIntegrityFailed = "INTEGRITY_FAILED"
+	ErrFileExpired     = "FILE_EXPIRED"
+	ErrSessionConflict = "SESSION_CONFLICT"
 )
 
 // FileMetadata is the JSON payload carried by FILE_HEADER packets.
@@ -73,13 +73,13 @@ type FileMetadata struct {
 // ControlPayload is the JSON payload carried by CONTROL packets.
 type ControlPayload struct {
 	Type       string   `json:"type"`                  // CtrlACK, CtrlNAK, etc.
-	Seq        uint32   `json:"seq,omitempty"`          // Relevant chunk sequence
-	Message    string   `json:"message,omitempty"`      // Human-readable or error code
-	FileID     string   `json:"file_id,omitempty"`      // Assigned on COMPLETE
-	SessionID  string   `json:"session_id,omitempty"`   // Echoed on HANDSHAKE ACK
-	RetryAfter int      `json:"retry_after,omitempty"`  // Seconds, used with BUSY
-	Succeeded  []string `json:"succeeded,omitempty"`    // For PARTIAL_COMPLETE
-	Failed     []string `json:"failed,omitempty"`       // For PARTIAL_COMPLETE
+	Seq        uint32   `json:"seq,omitempty"`         // Relevant chunk sequence
+	Message    string   `json:"message,omitempty"`     // Human-readable or error code
+	FileID     string   `json:"file_id,omitempty"`     // Assigned on COMPLETE
+	SessionID  string   `json:"session_id,omitempty"`  // Echoed on HANDSHAKE ACK
+	RetryAfter int      `json:"retry_after,omitempty"` // Seconds, used with BUSY
+	Succeeded  []string `json:"succeeded,omitempty"`   // For PARTIAL_COMPLETE
+	Failed     []string `json:"failed,omitempty"`      // For PARTIAL_COMPLETE
 
 	WorkerID     string          `json:"worker_id,omitempty"`
 	JobID        string          `json:"job_id,omitempty"`
