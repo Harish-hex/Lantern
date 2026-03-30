@@ -166,8 +166,8 @@ func TestCoordinatorCompleteTaskUpdatesWorkerAndJobState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CompleteTask(second): %v", err)
 	}
-	if job.Status != "completed" {
-		t.Fatalf("job status after second completion = %q, want completed", job.Status)
+	if job.Status != ComputeJobStatusDone {
+		t.Fatalf("job status after second completion = %q, want %s", job.Status, ComputeJobStatusDone)
 	}
 	if job.CompletedTasks != 2 || job.FailedTasks != 0 {
 		t.Fatalf("final job counters = completed:%d failed:%d, want 2/0", job.CompletedTasks, job.FailedTasks)
@@ -177,6 +177,7 @@ func TestCoordinatorCompleteTaskUpdatesWorkerAndJobState(t *testing.T) {
 func TestCoordinatorFailTaskFailsJobAndQueuedTasks(t *testing.T) {
 	cfg := config.Default()
 	cfg.ComputeEnabled = true
+	cfg.ComputeRetryMax = 1
 
 	idx, err := index.NewJSONStore(t.TempDir())
 	if err != nil {
@@ -207,14 +208,14 @@ func TestCoordinatorFailTaskFailsJobAndQueuedTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FailTask: %v", err)
 	}
-	if failedTask.Status != "failed" {
-		t.Fatalf("failed task status = %q, want failed", failedTask.Status)
+	if failedTask.Status != ComputeTaskStatusNeedsAttention {
+		t.Fatalf("failed task status = %q, want %s", failedTask.Status, ComputeTaskStatusNeedsAttention)
 	}
 	if failedTask.Error != "worker crashed" {
 		t.Fatalf("failed task error = %q, want worker crashed", failedTask.Error)
 	}
-	if job.Status != "failed" {
-		t.Fatalf("job status = %q, want failed", job.Status)
+	if job.Status != ComputeJobStatusNeedsAttention {
+		t.Fatalf("job status = %q, want %s", job.Status, ComputeJobStatusNeedsAttention)
 	}
 	if job.FailedTasks != 2 {
 		t.Fatalf("job failed count = %d, want 2", job.FailedTasks)
@@ -227,8 +228,8 @@ func TestCoordinatorFailTaskFailsJobAndQueuedTasks(t *testing.T) {
 		if task.JobID != "job-fail" {
 			continue
 		}
-		if task.Status != "failed" {
-			t.Fatalf("task %s status = %q, want failed", task.ID, task.Status)
+		if task.Status != ComputeTaskStatusNeedsAttention {
+			t.Fatalf("task %s status = %q, want %s", task.ID, task.Status, ComputeTaskStatusNeedsAttention)
 		}
 	}
 
@@ -285,6 +286,7 @@ func TestCoordinatorRejectsInvalidTaskCompletionTransitions(t *testing.T) {
 func TestCoordinatorRestoreKeepsTerminalTasksOutOfQueue(t *testing.T) {
 	cfg := config.Default()
 	cfg.ComputeEnabled = true
+	cfg.ComputeRetryMax = 1
 
 	idx, err := index.NewJSONStore(t.TempDir())
 	if err != nil {
@@ -323,7 +325,307 @@ func TestCoordinatorRestoreKeepsTerminalTasksOutOfQueue(t *testing.T) {
 	if next, ok := restored.ClaimTask("worker-2", now.Add(40*time.Millisecond)); ok || next != nil {
 		t.Fatal("expected no queued task after restore for failed job")
 	}
-	if restored.jobs["job-restore"].Status != "failed" {
-		t.Fatalf("restored job status = %q, want failed", restored.jobs["job-restore"].Status)
+	if restored.jobs["job-restore"].Status != ComputeJobStatusNeedsAttention {
+		t.Fatalf("restored job status = %q, want %s", restored.jobs["job-restore"].Status, ComputeJobStatusNeedsAttention)
+	}
+}
+
+func TestCoordinatorJobStateReturnsSnapshot(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+	c.RegisterWorker("worker-state", nil, now)
+
+	_, _, err = c.SubmitJob("job-state", ComputeJobSubmit{
+		Type: "generic_v1",
+		Tasks: []json.RawMessage{
+			json.RawMessage(`{"task":1}`),
+			json.RawMessage(`{"task":2}`),
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+
+	if _, _, ok := c.JobState("missing"); ok {
+		t.Fatal("expected missing job state lookup to fail")
+	}
+
+	job, tasks, ok := c.JobState("job-state")
+	if !ok {
+		t.Fatal("expected job-state snapshot")
+	}
+	if job.ID != "job-state" {
+		t.Fatalf("job id = %q, want job-state", job.ID)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("task count = %d, want 2", len(tasks))
+	}
+
+	claimed, ok := c.ClaimTask("worker-state", now.Add(10*time.Millisecond))
+	if !ok || claimed == nil {
+		t.Fatal("expected claim")
+	}
+	if _, _, err := c.CompleteTask("worker-state", claimed.ID, "sha256:ok", now.Add(20*time.Millisecond)); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+
+	job, tasks, ok = c.JobState("job-state")
+	if !ok {
+		t.Fatal("expected job-state snapshot after completion")
+	}
+	if job.CompletedTasks != 1 {
+		t.Fatalf("completed tasks = %d, want 1", job.CompletedTasks)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("task count after completion = %d, want 2", len(tasks))
+	}
+}
+
+func TestCoordinatorTemplateSubmissionCompilesBuiltIns(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+	c.RegisterWorker("worker-render-a", []string{"render_frames"}, now)
+	c.RegisterWorker("worker-render-b", []string{"render_frames"}, now)
+
+	job, total, err := c.SubmitJob("job-template", ComputeJobSubmit{
+		Template: "render_frames",
+		Inputs:   json.RawMessage(`{"scene":"demo.blend","frame_start":1,"frame_end":7,"chunk_size":3}`),
+		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+	}, now)
+	if err != nil {
+		t.Fatalf("SubmitJob(template): %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("compiled task count = %d, want 3", total)
+	}
+	if job.TemplateID != "render_frames" {
+		t.Fatalf("template id = %q, want render_frames", job.TemplateID)
+	}
+	if job.Preflight.Confidence != "High" {
+		t.Fatalf("preflight confidence = %q, want High", job.Preflight.Confidence)
+	}
+}
+
+func TestCoordinatorPreviewTemplateSubmissionDoesNotPersistState(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+	c.RegisterWorker("worker-preview-a", []string{"render_frames"}, now)
+	c.RegisterWorker("worker-preview-b", []string{"render_frames"}, now)
+
+	preview, err := c.PreviewJob(ComputeJobSubmit{
+		Template: "render_frames",
+		Inputs:   json.RawMessage(`{"scene":"preview.blend","frame_start":1,"frame_end":10,"chunk_size":5}`),
+		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+	}, now)
+	if err != nil {
+		t.Fatalf("PreviewJob: %v", err)
+	}
+	if preview.TemplateID != "render_frames" {
+		t.Fatalf("template id = %q, want render_frames", preview.TemplateID)
+	}
+	if preview.Preflight.Ready != true {
+		t.Fatalf("preflight ready = %v, want true", preview.Preflight.Ready)
+	}
+	if len(c.JobsSnapshot()) != 0 {
+		t.Fatalf("jobs persisted after preview = %d, want 0", len(c.JobsSnapshot()))
+	}
+	if _, _, ok := c.JobState("job-preview"); ok {
+		t.Fatal("unexpected persisted job state after preview")
+	}
+}
+
+func TestCoordinatorPreviewTemplateSubmissionAllowsNotReadyPreflight(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+
+	preview, err := c.PreviewJob(ComputeJobSubmit{
+		Template: "render_frames",
+		Inputs:   json.RawMessage(`{"scene":"preview.blend","frame_start":1,"frame_end":5,"chunk_size":2}`),
+		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+	}, now)
+	if err != nil {
+		t.Fatalf("PreviewJob: %v", err)
+	}
+	if preview.Preflight.Ready {
+		t.Fatal("expected not-ready preflight when no healthy workers exist")
+	}
+	if len(preview.Preflight.Checks) == 0 {
+		t.Fatal("expected preflight checks")
+	}
+	if len(c.JobsSnapshot()) != 0 {
+		t.Fatalf("jobs persisted after preview = %d, want 0", len(c.JobsSnapshot()))
+	}
+}
+
+func TestCoordinatorPreviewTemplateSubmissionRejectsInvalidTemplate(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	_, err = c.PreviewJob(ComputeJobSubmit{Template: "missing_template"}, time.Now().UTC())
+	if err == nil {
+		t.Fatal("expected invalid template error")
+	}
+}
+
+func TestCoordinatorPreviewTemplateSubmissionRejectsInvalidInputShape(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	_, err = c.PreviewJob(ComputeJobSubmit{
+		Template: "render_frames",
+		Inputs:   json.RawMessage(`{"scene":"broken.blend","frame_start":"bad","frame_end":10,"chunk_size":2}`),
+		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+	}, time.Now().UTC())
+	if err == nil {
+		t.Fatal("expected invalid input shape error")
+	}
+}
+
+func TestCoordinatorTransientFailureRetriesAndReassigns(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+	cfg.ComputeRetryMax = 3
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+	c.RegisterWorker("worker-a", []string{"edge_tiles_v1"}, now)
+	c.RegisterWorker("worker-b", []string{"edge_tiles_v1"}, now)
+
+	_, _, err = c.SubmitJob("job-retry", ComputeJobSubmit{
+		Type:  "edge_tiles_v1",
+		Tasks: []json.RawMessage{json.RawMessage(`{"tile_x":0,"tile_y":0}`)},
+	}, now)
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+
+	first, ok := c.ClaimTask("worker-a", now.Add(10*time.Millisecond))
+	if !ok || first == nil {
+		t.Fatal("expected initial claim")
+	}
+
+	task, job, err := c.FailTask("worker-a", first.ID, "connection timeout", "", now.Add(20*time.Millisecond))
+	if err != nil {
+		t.Fatalf("FailTask(retry): %v", err)
+	}
+	if task.Status != ComputeTaskStatusRetrying {
+		t.Fatalf("task status after retryable failure = %q, want %s", task.Status, ComputeTaskStatusRetrying)
+	}
+	if job.Status != ComputeJobStatusRetrying {
+		t.Fatalf("job status after retryable failure = %q, want %s", job.Status, ComputeJobStatusRetrying)
+	}
+
+	if sameWorkerTask, ok := c.ClaimTask("worker-a", now.Add(30*time.Millisecond)); ok || sameWorkerTask != nil {
+		t.Fatal("expected same worker to be skipped when another eligible worker exists")
+	}
+
+	reassigned, ok := c.ClaimTask("worker-b", now.Add(40*time.Millisecond))
+	if !ok || reassigned == nil {
+		t.Fatal("expected second worker to claim retried task")
+	}
+	if reassigned.ID != first.ID {
+		t.Fatalf("reassigned task id = %q, want %q", reassigned.ID, first.ID)
+	}
+	if reassigned.Attempt != 2 {
+		t.Fatalf("reassigned attempt = %d, want 2", reassigned.Attempt)
+	}
+}
+
+func TestCoordinatorRetryJobResetsTerminalState(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+	cfg.ComputeRetryMax = 1
+
+	idx, err := index.NewJSONStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewJSONStore: %v", err)
+	}
+
+	c := NewCoordinator(cfg, idx)
+	now := time.Now().UTC()
+	c.RegisterWorker("worker-reset-a", []string{"data_processing_batch"}, now)
+	c.RegisterWorker("worker-reset-b", []string{"data_processing_batch"}, now)
+
+	_, _, err = c.SubmitJob("job-reset", ComputeJobSubmit{
+		Template: "data_processing_batch",
+		Inputs:   json.RawMessage(`{"datasets":["customers.csv"]}`),
+	}, now)
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+
+	task, ok := c.ClaimTask("worker-reset-a", now.Add(10*time.Millisecond))
+	if !ok || task == nil {
+		t.Fatal("expected claim")
+	}
+	if _, job, err := c.FailTask("worker-reset-a", task.ID, "invalid schema", "", now.Add(20*time.Millisecond)); err != nil {
+		t.Fatalf("FailTask: %v", err)
+	} else if job.Status != ComputeJobStatusNeedsAttention {
+		t.Fatalf("job status = %q, want %s", job.Status, ComputeJobStatusNeedsAttention)
+	}
+
+	retried, err := c.RetryJob("job-reset", now.Add(30*time.Millisecond))
+	if err != nil {
+		t.Fatalf("RetryJob: %v", err)
+	}
+	if retried.Status != ComputeJobStatusQueued {
+		t.Fatalf("retried status = %q, want %s", retried.Status, ComputeJobStatusQueued)
+	}
+
+	reclaimed, ok := c.ClaimTask("worker-reset-b", now.Add(40*time.Millisecond))
+	if !ok || reclaimed == nil {
+		t.Fatal("expected retried job task claim")
+	}
+	if reclaimed.Attempt != 1 {
+		t.Fatalf("reclaimed attempt = %d, want 1", reclaimed.Attempt)
 	}
 }

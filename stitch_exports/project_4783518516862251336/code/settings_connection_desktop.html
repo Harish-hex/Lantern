@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lantern Settings - Node Configuration</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#825100",
+              "on-error": "#ffffff",
+              "surface-variant": "#d3e4fe",
+              "on-primary-fixed": "#00201d",
+              "on-error-container": "#93000a",
+              "primary-container": "#008378",
+              "surface-container-highest": "#d3e4fe",
+              "outline": "#717786",
+              "tertiary-fixed-dim": "#ffb95f",
+              "surface-container-low": "#eff4ff",
+              "primary-fixed-dim": "#6bd8cb",
+              "on-tertiary-fixed-variant": "#653e00",
+              "secondary-fixed": "#d5e3fc",
+              "primary": "#00685f",
+              "on-tertiary-fixed": "#2a1700",
+              "error": "#ba1a1a",
+              "on-primary-container": "#f4fffc",
+              "background": "#f8f9ff",
+              "on-surface": "#0b1c30",
+              "secondary-fixed-dim": "#b9c7df",
+              "on-tertiary-container": "#fffbff",
+              "secondary": "#515f74",
+              "secondary-container": "#d5e3fc",
+              "surface-bright": "#f8f9ff",
+              "on-secondary-fixed": "#0d1c2e",
+              "on-secondary-fixed-variant": "#3a485b",
+              "surface-container-high": "#dce9ff",
+              "error-container": "#ffdad6",
+              "on-secondary-container": "#57657a",
+              "surface-tint": "#006a61",
+              "outline-variant": "#c1c6d7",
+              "on-tertiary": "#ffffff",
+              "surface-dim": "#cbdbf5",
+              "inverse-surface": "#213145",
+              "on-primary": "#ffffff",
+              "surface": "#f8f9ff",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-container": "#a36700",
+              "primary-fixed": "#89f5e7",
+              "inverse-primary": "#6bd8cb",
+              "surface-container": "#e5eeff",
+              "on-background": "#0b1c30",
+              "tertiary-fixed": "#ffddb8",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#414754",
+              "inverse-on-surface": "#eaf1ff",
+              "on-primary-fixed-variant": "#005049"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(16px);
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface">
+<!-- SSE Reconnecting Banner -->
+<div class="sticky top-0 z-[60] bg-tertiary text-on-tertiary-container py-2 px-6 flex items-center justify-center space-x-3 shadow-sm">
+<span class="material-symbols-outlined text-sm animate-pulse">sync</span>
+<span class="font-label text-xs uppercase tracking-widest font-bold">SSE Reconnecting</span>
+<span class="hidden md:block text-xs opacity-80">Attempting to re-establish real-time telemetry stream...</span>
+</div>
+<div class="flex h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col p-4 space-y-2 bg-[#eff4ff] dark:bg-slate-900/50 backdrop-blur-lg docked left-0 h-screen w-64 shadow-xl shadow-slate-200/50 dark:shadow-none">
+<div class="flex items-center space-x-3 mb-8 px-2">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">flare</span>
+</div>
+<div>
+<h2 class="font-headline text-lg font-bold text-[#00685f]">Lantern Node</h2>
+<p class="font-label text-[10px] text-secondary tracking-tighter uppercase opacity-70">coordinator.local</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-manrope text-sm">Overview</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">swap_horiz</span>
+<span class="font-manrope text-sm">File Transfer</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">memory</span>
+<span class="font-manrope text-sm">Compute</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span class="font-manrope text-sm">Workers</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-manrope text-sm">Activity</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 bg-white text-[#00685f] font-semibold rounded-lg shadow-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="font-manrope text-sm">Settings</span>
+</a>
+</nav>
+<div class="pt-4 border-t border-outline-variant/10 space-y-1">
+<a class="flex items-center space-x-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] rounded-lg" href="#">
+<span class="material-symbols-outlined text-sm">help</span>
+<span class="font-manrope text-sm">Help</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] rounded-lg" href="#">
+<span class="material-symbols-outlined text-sm">description</span>
+<span class="font-manrope text-sm">Documentation</span>
+</a>
+<button class="w-full mt-4 py-3 px-4 bg-primary text-white font-label text-xs font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform flex items-center justify-center space-x-2">
+<span class="material-symbols-outlined text-sm">add_circle</span>
+<span>Deploy Worker</span>
+</button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col overflow-hidden">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-6 h-16 w-full bg-[#f8f9ff] docked full-width top-0 z-50 transition-colors">
+<div class="flex items-center space-x-4">
+<h1 class="text-xl font-bold text-[#00685f] tracking-tight font-headline">Settings</h1>
+<div class="h-4 w-px bg-outline-variant/30 hidden md:block"></div>
+<span class="text-secondary text-xs font-label uppercase tracking-widest hidden md:block">Node Configuration</span>
+</div>
+<div class="flex items-center space-x-4">
+<div class="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-surface-container-low rounded-full">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="text-[10px] font-label font-bold text-primary">Status: Online</span>
+</div>
+<div class="flex items-center space-x-2">
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined">settings_remote</span>
+</button>
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined">sensors</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border-2 border-primary-container">
+<img alt="User Profile" data-alt="professional user portrait with neutral background and soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXoNin3GLdeMgzXtNTHXtaooo5ZQoPpW-qjnFxbWJyepbQwx5cNQyK1aQvoDqx2_-eTiKjl2rtsntsUJajoXleAjfrzygLrfMP4SaLPXg-Ur8aDrIoIJ_8BoFm4s-1WPc-p4PMiO4xfJ6bPkEhC4WnsMUNBbe5fCG-IG7pez0qf_FxmF_a5dUdJjzgQAYIZtQW6X9MTN89gKjhiqPW9UgeWQmYCXZhc5s_7jj3SFaWPqLxH7VrQnqI0Cj3CGHM_msDwZhk5n52hYU"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto p-6 md:p-10 space-y-12 no-scrollbar">
+<!-- Introduction Header -->
+<div class="max-w-4xl">
+<h2 class="font-headline text-3xl font-extrabold text-on-surface tracking-tight mb-2">Technical Core Parameters</h2>
+<p class="text-secondary max-w-2xl leading-relaxed">View the current operational configuration for your Lantern node. Some advanced parameters are locked to ensure network stability while in the beta phase.</p>
+</div>
+<!-- Bento Grid Sections -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6 max-w-6xl">
+<!-- Network Section -->
+<section class="md:col-span-7 bg-surface-container-lowest p-8 rounded-xl shadow-sm relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-6xl">lan</span>
+</div>
+<div class="flex items-center space-x-3 mb-8">
+<span class="material-symbols-outlined text-primary">wifi_tethering</span>
+<h3 class="font-headline text-xl font-bold">Network Architecture</h3>
+</div>
+<div class="space-y-6">
+<div class="flex items-center justify-between p-4 bg-surface rounded-lg">
+<div>
+<p class="font-label text-xs text-secondary uppercase tracking-wider mb-1">Inbound Port</p>
+<p class="font-headline text-lg font-bold">4001</p>
+</div>
+<div class="text-right">
+<span class="px-3 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-full font-label">DEFAULT TCP</span>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface rounded-lg">
+<div>
+<p class="font-label text-xs text-secondary uppercase tracking-wider mb-1">DHT Discovery</p>
+<p class="font-headline text-lg font-bold">Enabled</p>
+</div>
+<div class="text-right">
+<span class="px-3 py-1 bg-outline-variant/20 text-secondary text-[10px] font-bold rounded-full font-label">READ ONLY</span>
+</div>
+</div>
+<div class="opacity-40 grayscale pointer-events-none border-t border-outline-variant/10 pt-4">
+<div class="flex items-center justify-between">
+<p class="font-label text-xs text-secondary uppercase">Dynamic Port Forwarding</p>
+<span class="text-[10px] font-bold text-tertiary uppercase">Future Feature</span>
+</div>
+<p class="text-[11px] mt-1 text-on-surface-variant">Automatic UPnP and NAT-PMP hole punching will be available in V2.1</p>
+</div>
+</div>
+</section>
+<!-- Discovery Summary -->
+<section class="md:col-span-5 bg-primary p-8 rounded-xl shadow-lg shadow-primary/10 text-on-primary flex flex-col justify-between">
+<div>
+<div class="flex items-center space-x-3 mb-6">
+<span class="material-symbols-outlined">explore</span>
+<h3 class="font-headline text-xl font-bold">Discovery</h3>
+</div>
+<div class="space-y-4">
+<div>
+<p class="font-label text-[10px] uppercase opacity-70 mb-2">Bootstrap Nodes</p>
+<div class="flex flex-wrap gap-2">
+<span class="bg-white/10 px-2 py-1 rounded text-[10px] font-label">primary.lantern.io</span>
+<span class="bg-white/10 px-2 py-1 rounded text-[10px] font-label">eu-1.lantern.io</span>
+<span class="bg-white/10 px-2 py-1 rounded text-[10px] font-label">us-west.lantern.io</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-6 border-t border-white/10">
+<div class="flex items-center space-x-2 text-xs opacity-80 mb-2">
+<span class="material-symbols-outlined text-sm">lock</span>
+<span>Multi-hop privacy is enforced.</span>
+</div>
+<p class="text-[11px] leading-relaxed opacity-60">Custom discovery resolvers are currently disabled to maintain global consistency.</p>
+</div>
+</section>
+<!-- Transfer Parameters -->
+<section class="md:col-span-12 lg:col-span-8 bg-surface-container-low p-8 rounded-xl flex flex-col md:flex-row gap-8">
+<div class="md:w-1/3">
+<div class="flex items-center space-x-3 mb-4">
+<span class="material-symbols-outlined text-primary">speed</span>
+<h3 class="font-headline text-xl font-bold">Transfer</h3>
+</div>
+<p class="text-xs text-secondary leading-relaxed">Optimization parameters for heavy payload distribution across the mesh.</p>
+</div>
+<div class="md:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div class="bg-white p-4 rounded-lg shadow-sm">
+<p class="font-label text-[10px] text-secondary uppercase mb-1">Chunk Size</p>
+<p class="text-xl font-headline font-bold text-primary">256 <span class="text-sm font-normal">KB</span></p>
+<p class="text-[9px] text-on-surface-variant mt-2">Optimized for high-latency peers.</p>
+</div>
+<div class="bg-white p-4 rounded-lg shadow-sm">
+<p class="font-label text-[10px] text-secondary uppercase mb-1">TTL Defaults</p>
+<p class="text-xl font-headline font-bold text-primary">64 <span class="text-sm font-normal">Hops</span></p>
+<p class="text-[9px] text-on-surface-variant mt-2">Maximum packet survival time.</p>
+</div>
+<div class="bg-white p-4 rounded-lg shadow-sm">
+<p class="font-label text-[10px] text-secondary uppercase mb-1">Max Downloads</p>
+<p class="text-xl font-headline font-bold text-primary">12 <span class="text-sm font-normal">Threads</span></p>
+<p class="text-[9px] text-on-surface-variant mt-2">Concurrent worker stream limit.</p>
+</div>
+<div class="bg-white/40 p-4 rounded-lg border border-dashed border-outline-variant/30 flex flex-col justify-center text-center">
+<span class="material-symbols-outlined text-outline-variant mb-1">lock_clock</span>
+<p class="font-label text-[9px] text-secondary uppercase">Configurable Limits</p>
+<p class="text-[10px] font-bold text-tertiary">Q4 Feature Roadmap</p>
+</div>
+</div>
+</section>
+<!-- Compute Section -->
+<section class="md:col-span-12 lg:col-span-4 bg-white p-8 rounded-xl shadow-sm border border-outline-variant/10">
+<div class="flex items-center space-x-3 mb-6">
+<span class="material-symbols-outlined text-primary">memory</span>
+<h3 class="font-headline text-xl font-bold">Compute</h3>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-end border-b border-outline-variant/10 pb-3">
+<span class="text-xs text-secondary font-medium">Memory Ceiling</span>
+<span class="font-label font-bold">4.0 GB</span>
+</div>
+<div class="flex justify-between items-end border-b border-outline-variant/10 pb-3">
+<span class="text-xs text-secondary font-medium">Worker Timeout</span>
+<span class="font-label font-bold">300s</span>
+</div>
+<div class="pt-4">
+<div class="p-3 bg-tertiary-fixed-dim/20 rounded-lg flex items-start space-x-3">
+<span class="material-symbols-outlined text-tertiary text-sm mt-0.5">info</span>
+<div>
+<p class="text-[10px] font-bold text-tertiary uppercase mb-1">Resource Scaling</p>
+<p class="text-[11px] leading-tight text-on-tertiary-fixed-variant">Dynamic CPU allocation is currently locked to system defaults to prevent host starvation.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer Meta -->
+<div class="max-w-4xl border-t border-outline-variant/20 pt-8 flex flex-col md:flex-row justify-between items-center text-secondary text-xs">
+<div class="flex space-x-6 mb-4 md:mb-0">
+<div class="flex items-center space-x-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span>Engine v0.8.4-beta</span>
+</div>
+<div class="flex items-center space-x-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span>Signed by Coordinator</span>
+</div>
+</div>
+<button class="flex items-center space-x-2 text-primary hover:underline font-medium">
+<span class="material-symbols-outlined text-sm">download</span>
+<span>Export Configuration JSON</span>
+</button>
+</div>
+</div>
+</main>
+</div>
+</body></html>

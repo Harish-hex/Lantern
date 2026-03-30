@@ -43,6 +43,7 @@ const (
 	CtrlTaskFail        = "TASK_FAIL"
 	CtrlTaskClaim       = "TASK_CLAIM"
 	CtrlTaskLease       = "TASK_LEASE"
+	CtrlJobStatus       = "JOB_STATUS"
 )
 
 // ----- Error Codes -----

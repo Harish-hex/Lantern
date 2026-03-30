@@ -17,6 +17,75 @@ import (
 	"github.com/Harish-hex/Lantern/internal/protocol"
 )
 
+type ComputeTask struct {
+	ID                   string          `json:"id"`
+	JobID                string          `json:"job_id"`
+	WorkerID             string          `json:"worker_id"`
+	LastWorkerID         string          `json:"last_worker_id"`
+	Status               string          `json:"status"`
+	Attempt              int             `json:"attempt"`
+	LeaseUntil           time.Time       `json:"lease_until"`
+	UpdatedAt            time.Time       `json:"updated_at"`
+	Checksum             string          `json:"checksum"`
+	Error                string          `json:"error"`
+	FailureCategory      string          `json:"failure_category"`
+	RequiredCapabilities []string        `json:"required_capabilities"`
+	Payload              json.RawMessage `json:"payload"`
+}
+
+type ComputeArtifact struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	SizeBytes int64           `json:"size_bytes"`
+	CreatedAt time.Time       `json:"created_at"`
+	Summary   json.RawMessage `json:"summary"`
+}
+
+type ComputePreflightCheck struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type ComputePreflight struct {
+	Ready                bool                    `json:"ready"`
+	Confidence           string                  `json:"confidence"`
+	EstimatedTasks       int                     `json:"estimated_tasks"`
+	EstimatedOutputBytes int64                   `json:"estimated_output_bytes"`
+	RequiredCapabilities []string                `json:"required_capabilities"`
+	Checks               []ComputePreflightCheck `json:"checks"`
+}
+
+type ComputeJob struct {
+	ID                   string            `json:"id"`
+	Type                 string            `json:"type"`
+	TemplateID           string            `json:"template_id"`
+	TemplateName         string            `json:"template_name"`
+	OutputKind           string            `json:"output_kind"`
+	Status               string            `json:"status"`
+	Confidence           string            `json:"confidence"`
+	NeedsAttentionReason string            `json:"needs_attention_reason"`
+	FailureCategory      string            `json:"failure_category"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
+	StartedAt            time.Time         `json:"started_at"`
+	FinishedAt           time.Time         `json:"finished_at"`
+	TotalTasks           int               `json:"total_tasks"`
+	CompletedTasks       int               `json:"completed_tasks"`
+	FailedTasks          int               `json:"failed_tasks"`
+	RetryingTasks        int               `json:"retrying_tasks"`
+	Inputs               json.RawMessage   `json:"inputs"`
+	Settings             json.RawMessage   `json:"settings"`
+	Preflight            ComputePreflight  `json:"preflight"`
+	Artifacts            []ComputeArtifact `json:"artifacts"`
+}
+
+type ComputeJobStatus struct {
+	Job   ComputeJob    `json:"job"`
+	Tasks []ComputeTask `json:"tasks"`
+}
+
 // Client connects to a Lantern server and transfers files.
 type Client struct {
 	conn      net.Conn
@@ -299,6 +368,142 @@ func (c *Client) DownloadFile(fileID, destDir string, progressFn func(filename s
 
 	log.Printf("[client] downloaded %s → %s (%d chunks)", fileID, outPath, chunkCount)
 	return nil
+}
+
+func (c *Client) SubmitComputeJob(jobID, jobType, token string, tasks []json.RawMessage) (*protocol.ControlPayload, error) {
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("at least one task payload is required")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"type":  jobType,
+		"tasks": tasks,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal submit payload: %w", err)
+	}
+	return c.sendControl(protocol.ControlPayload{
+		Type:    protocol.CtrlJobSubmit,
+		JobID:   jobID,
+		Token:   token,
+		Payload: payload,
+	})
+}
+
+func (c *Client) SubmitComputeTemplateJob(jobID, templateID, token string, inputs, settings json.RawMessage) (*protocol.ControlPayload, error) {
+	payload, err := json.Marshal(map[string]any{
+		"template": templateID,
+		"inputs":   inputs,
+		"settings": settings,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal template submit payload: %w", err)
+	}
+	return c.sendControl(protocol.ControlPayload{
+		Type:    protocol.CtrlJobSubmit,
+		JobID:   jobID,
+		Token:   token,
+		Payload: payload,
+	})
+}
+
+func (c *Client) RegisterWorker(workerID, token string, capabilities []string) error {
+	_, err := c.sendControl(protocol.ControlPayload{
+		Type:         protocol.CtrlWorkerHello,
+		WorkerID:     workerID,
+		Token:        token,
+		Capabilities: capabilities,
+	})
+	return err
+}
+
+func (c *Client) HeartbeatWorker(workerID, token string) error {
+	_, err := c.sendControl(protocol.ControlPayload{
+		Type:     protocol.CtrlWorkerHeartbeat,
+		WorkerID: workerID,
+		Token:    token,
+	})
+	return err
+}
+
+func (c *Client) ClaimComputeTask(workerID, token string) (*protocol.ControlPayload, error) {
+	ctrl, err := c.sendControl(protocol.ControlPayload{
+		Type:     protocol.CtrlTaskClaim,
+		WorkerID: workerID,
+		Token:    token,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if ctrl.Type == protocol.CtrlNAK {
+		return ctrl, nil
+	}
+	if ctrl.Type != protocol.CtrlTaskAssign {
+		return nil, fmt.Errorf("unexpected claim response: %s", ctrl.Type)
+	}
+	return ctrl, nil
+}
+
+func (c *Client) CompleteComputeTask(workerID, taskID, checksum, token string) error {
+	_, err := c.sendControl(protocol.ControlPayload{
+		Type:     protocol.CtrlTaskResult,
+		WorkerID: workerID,
+		TaskID:   taskID,
+		Checksum: checksum,
+		Token:    token,
+	})
+	return err
+}
+
+func (c *Client) FailComputeTask(workerID, taskID, failureMessage, checksum, token string) error {
+	_, err := c.sendControl(protocol.ControlPayload{
+		Type:     protocol.CtrlTaskFail,
+		WorkerID: workerID,
+		TaskID:   taskID,
+		Message:  failureMessage,
+		Checksum: checksum,
+		Token:    token,
+	})
+	return err
+}
+
+func (c *Client) ComputeJobStatus(jobID, token string) (*ComputeJobStatus, error) {
+	ctrl, err := c.sendControl(protocol.ControlPayload{
+		Type:  protocol.CtrlJobStatus,
+		JobID: jobID,
+		Token: token,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var status ComputeJobStatus
+	if len(ctrl.Payload) > 0 {
+		if err := json.Unmarshal(ctrl.Payload, &status); err != nil {
+			return nil, fmt.Errorf("parse job status payload: %w", err)
+		}
+	}
+	if status.Job.ID == "" {
+		status.Job.ID = ctrl.JobID
+		status.Job.Status = ctrl.Status
+	}
+
+	return &status, nil
+}
+
+func (c *Client) sendControl(ctrl protocol.ControlPayload) (*protocol.ControlPayload, error) {
+	payload, err := json.Marshal(ctrl)
+	if err != nil {
+		return nil, fmt.Errorf("marshal control payload: %w", err)
+	}
+	hdr := protocol.NewHeader(protocol.MsgControl, 0, 0, 0, c.sessionID)
+	if err := protocol.WritePacket(c.conn, hdr, payload); err != nil {
+		return nil, fmt.Errorf("send control: %w", err)
+	}
+	resp, err := c.readACK()
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // Close terminates the connection.

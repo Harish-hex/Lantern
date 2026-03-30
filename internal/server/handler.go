@@ -396,6 +396,8 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 		h.handleTaskResult(conn, hdr, ctrl)
 	case protocol.CtrlTaskFail:
 		h.handleTaskFail(conn, hdr, ctrl)
+	case protocol.CtrlJobStatus:
+		h.handleJobStatus(conn, hdr, ctrl)
 	case protocol.CtrlWorkerHello:
 		h.handleWorkerHello(conn, hdr, ctrl)
 	case protocol.CtrlWorkerHeartbeat:
@@ -431,11 +433,20 @@ func (h *Handler) handleJobSubmit(conn net.Conn, hdr protocol.Header, ctrl proto
 		return
 	}
 
+	ackPayload, err := json.Marshal(map[string]any{
+		"job": job,
+	})
+	if err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "failed to encode accepted job")
+		return
+	}
+
 	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
 		Type:    protocol.CtrlACK,
 		JobID:   job.ID,
 		Status:  job.Status,
-		Message: fmt.Sprintf("job accepted with %d tasks", tasks),
+		Message: fmt.Sprintf("job accepted with %d task(s) [%s confidence]", tasks, job.Confidence),
+		Payload: ackPayload,
 	})
 }
 
@@ -565,8 +576,58 @@ func (h *Handler) handleTaskFail(conn net.Conn, hdr protocol.Header, ctrl protoc
 		JobID:    job.ID,
 		TaskID:   task.ID,
 		Status:   task.Status,
-		Message:  "task failed",
+		Message:  taskFailMessage(task),
 	})
+}
+
+func (h *Handler) handleJobStatus(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.JobID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing job_id")
+		return
+	}
+
+	job, tasks, ok := h.server.compute.JobState(ctrl.JobID)
+	if !ok {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "job not found")
+		return
+	}
+
+	statusPayload, err := json.Marshal(map[string]any{
+		"job":   job,
+		"tasks": tasks,
+	})
+	if err != nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "failed to encode job status")
+		return
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:    protocol.CtrlACK,
+		JobID:   job.ID,
+		Status:  job.Status,
+		Payload: statusPayload,
+	})
+}
+
+func taskFailMessage(task *ComputeTask) string {
+	if task == nil {
+		return "task failed"
+	}
+	if task.Status == ComputeTaskStatusRetrying {
+		return "task scheduled for retry"
+	}
+	if task.Status == ComputeTaskStatusNeedsAttention {
+		return "task needs attention"
+	}
+	return "task failed"
 }
 
 func (h *Handler) handleWorkerHeartbeat(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {

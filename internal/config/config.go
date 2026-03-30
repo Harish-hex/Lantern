@@ -35,13 +35,15 @@ type Config struct {
 	MaxDownloads int // Default download limit if client doesn't specify
 	MaxRetries   int // NAK retransmit ceiling per chunk
 
-	ComputeTokenTTL        time.Duration
-	ComputeLeaseTTL        time.Duration
-	ComputeHeartbeat       time.Duration
-	ComputeRetryMax        int
-	ComputeTaskSizeBytes   int64
-	ComputeRequireToken    bool
-	ComputeWorkerAuthToken string
+	ComputeTokenTTL                  time.Duration
+	ComputeLeaseTTL                  time.Duration
+	ComputeHeartbeat                 time.Duration
+	ComputeRetryMax                  int
+	ComputeTaskSizeBytes             int64
+	ComputeArtifactBudgetBytes       int64
+	ComputeWorkerQuarantineThreshold int
+	ComputeRequireToken              bool
+	ComputeWorkerAuthToken           string
 }
 
 // Default returns production-ready defaults.
@@ -78,11 +80,13 @@ func DefaultConfig() Config {
 		MaxDownloads: 10,
 		MaxRetries:   3,
 
-		ComputeTokenTTL:      15 * time.Minute,
-		ComputeLeaseTTL:      45 * time.Second,
-		ComputeHeartbeat:     15 * time.Second,
-		ComputeRetryMax:      3,
-		ComputeTaskSizeBytes: 4 * 1024 * 1024, // 4 MiB
+		ComputeTokenTTL:                  15 * time.Minute,
+		ComputeLeaseTTL:                  45 * time.Second,
+		ComputeHeartbeat:                 15 * time.Second,
+		ComputeRetryMax:                  3,
+		ComputeTaskSizeBytes:             4 * 1024 * 1024,        // 4 MiB
+		ComputeArtifactBudgetBytes:       1 * 1024 * 1024 * 1024, // 1 GiB
+		ComputeWorkerQuarantineThreshold: 4,
 	}
 
 	if token := os.Getenv("LANTERN_COMPUTE_TOKEN"); token != "" {

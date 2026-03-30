@@ -20,4 +20,10 @@ func TestDefaultConfigMDNSDefaults(t *testing.T) {
 	if cfg.ComputeTaskSizeBytes != 4*1024*1024 {
 		t.Fatalf("ComputeTaskSizeBytes = %d, want %d", cfg.ComputeTaskSizeBytes, 4*1024*1024)
 	}
+	if cfg.ComputeArtifactBudgetBytes != 1*1024*1024*1024 {
+		t.Fatalf("ComputeArtifactBudgetBytes = %d, want %d", cfg.ComputeArtifactBudgetBytes, 1*1024*1024*1024)
+	}
+	if cfg.ComputeWorkerQuarantineThreshold != 4 {
+		t.Fatalf("ComputeWorkerQuarantineThreshold = %d, want 4", cfg.ComputeWorkerQuarantineThreshold)
+	}
 }

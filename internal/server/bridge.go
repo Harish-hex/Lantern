@@ -24,6 +24,7 @@ type Bridge struct {
 	upload  *Semaphore
 	cfg     config.Config
 	stats   *Stats
+	compute *Coordinator
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -31,6 +32,84 @@ type Bridge struct {
 // Cfg returns the server config so HTTP handlers can read defaults such as
 // TTLDefault, MaxDownloads, ChunkSize, etc.
 func (b *Bridge) Cfg() config.Config { return b.cfg }
+
+func (b *Bridge) ComputeEnabled() bool {
+	return b.cfg.ComputeEnabled && b.compute != nil
+}
+
+func (b *Bridge) ComputeReadTokenValid(token string) bool {
+	if b.cfg.ComputeWorkerAuthToken == "" {
+		return true
+	}
+	return token == b.cfg.ComputeWorkerAuthToken
+}
+
+func (b *Bridge) ComputeJobs() []*ComputeJob {
+	if b.compute == nil {
+		return nil
+	}
+	return b.compute.JobsSnapshot()
+}
+
+func (b *Bridge) ComputeJobState(jobID string) (*ComputeJob, []*ComputeTask, bool) {
+	if b.compute == nil {
+		return nil, nil, false
+	}
+	return b.compute.JobState(jobID)
+}
+
+func (b *Bridge) ComputeWorkers() []*ComputeWorker {
+	if b.compute == nil {
+		return nil
+	}
+	return b.compute.WorkersSnapshot()
+}
+
+func (b *Bridge) ComputeTemplates() []ComputeTemplate {
+	return BuiltInComputeTemplates()
+}
+
+func (b *Bridge) ComputeOverview(now time.Time) *ComputeOverview {
+	if b.compute == nil {
+		return nil
+	}
+	return b.compute.Overview(now)
+}
+
+func (b *Bridge) SubmitComputeJob(jobID string, req ComputeJobSubmit, now time.Time) (*ComputeJob, int, error) {
+	if b.compute == nil {
+		return nil, 0, nil
+	}
+	return b.compute.SubmitJob(jobID, req, now)
+}
+
+func (b *Bridge) PreviewComputeJob(req ComputeJobSubmit, now time.Time) (*ComputeJobPreview, error) {
+	if b.compute == nil {
+		return nil, nil
+	}
+	return b.compute.PreviewJob(req, now)
+}
+
+func (b *Bridge) RetryComputeJob(jobID string, now time.Time) (*ComputeJob, error) {
+	if b.compute == nil {
+		return nil, nil
+	}
+	return b.compute.RetryJob(jobID, now)
+}
+
+func (b *Bridge) RequeueStalledComputeTasks(now time.Time) ([]string, error) {
+	if b.compute == nil {
+		return nil, nil
+	}
+	return b.compute.RequeueStalledTasks(now)
+}
+
+func (b *Bridge) SetComputeWorkerDisabled(workerID string, disabled bool, reason string, now time.Time) (*ComputeWorker, error) {
+	if b.compute == nil {
+		return nil, nil
+	}
+	return b.compute.SetWorkerDisabled(workerID, disabled, reason, now)
+}
 
 func (b *Bridge) Stats() StatsSnapshot {
 	if b.stats == nil {

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lantern | Workers &amp; Activity</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#825100",
+              "on-error": "#ffffff",
+              "surface-variant": "#d3e4fe",
+              "on-primary-fixed": "#00201d",
+              "on-error-container": "#93000a",
+              "primary-container": "#008378",
+              "surface-container-highest": "#d3e4fe",
+              "outline": "#717786",
+              "tertiary-fixed-dim": "#ffb95f",
+              "surface-container-low": "#eff4ff",
+              "primary-fixed-dim": "#6bd8cb",
+              "on-tertiary-fixed-variant": "#653e00",
+              "secondary-fixed": "#d5e3fc",
+              "primary": "#00685f",
+              "on-tertiary-fixed": "#2a1700",
+              "error": "#ba1a1a",
+              "on-primary-container": "#f4fffc",
+              "background": "#f8f9ff",
+              "on-surface": "#0b1c30",
+              "secondary-fixed-dim": "#b9c7df",
+              "on-tertiary-container": "#fffbff",
+              "secondary": "#515f74",
+              "secondary-container": "#d5e3fc",
+              "surface-bright": "#f8f9ff",
+              "on-secondary-fixed": "#0d1c2e",
+              "on-secondary-fixed-variant": "#3a485b",
+              "surface-container-high": "#dce9ff",
+              "error-container": "#ffdad6",
+              "on-secondary-container": "#57657a",
+              "surface-tint": "#006a61",
+              "outline-variant": "#c1c6d7",
+              "on-tertiary": "#ffffff",
+              "surface-dim": "#cbdbf5",
+              "inverse-surface": "#213145",
+              "on-primary": "#ffffff",
+              "surface": "#f8f9ff",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-container": "#a36700",
+              "primary-fixed": "#89f5e7",
+              "inverse-primary": "#6bd8cb",
+              "surface-container": "#e5eeff",
+              "on-background": "#0b1c30",
+              "tertiary-fixed": "#ffddb8",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#414754",
+              "inverse-on-surface": "#eaf1ff",
+              "on-primary-fixed-variant": "#005049"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .font-headline { font-family: 'Manrope', sans-serif; }
+        .font-label { font-family: 'Space Grotesk', sans-serif; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(16px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex overflow-hidden">
+<!-- SideNavBar Component -->
+<aside class="hidden md:flex flex-col p-4 space-y-2 bg-[#eff4ff] dark:bg-slate-900/50 backdrop-blur-lg docked left-0 h-screen w-64 shadow-xl shadow-slate-200/50 dark:shadow-none z-50">
+<div class="flex items-center space-x-3 px-2 py-4 mb-6">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container shadow-inner">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+</div>
+<div>
+<h2 class="text-lg font-bold text-[#00685f] font-headline leading-tight">Lantern Node</h2>
+<p class="text-xs text-secondary font-label">coordinator.local</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-manrope text-sm">Overview</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="swap_horiz">swap_horiz</span>
+<span class="font-manrope text-sm">File Transfer</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+<span class="font-manrope text-sm">Compute</span>
+</a>
+<!-- Active Tab: Workers -->
+<a class="flex items-center space-x-3 px-4 py-3 bg-white text-[#00685f] font-semibold rounded-lg shadow-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+<span class="font-manrope text-sm">Workers</span>
+</a>
+<!-- Active Tab: Activity (Combined context) -->
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-manrope text-sm">Activity</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-manrope text-sm">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 space-y-1 border-t border-outline-variant/10">
+<button class="w-full mb-4 py-3 px-4 bg-gradient-to-br from-primary to-primary-container text-white rounded-xl font-medium text-sm shadow-lg shadow-primary/20 flex items-center justify-center space-x-2">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+<span>Deploy Worker</span>
+</button>
+<a class="flex items-center space-x-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] rounded-lg" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="help">help</span>
+<span class="font-manrope text-sm">Help</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] rounded-lg" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="description">description</span>
+<span class="font-manrope text-sm">Documentation</span>
+</a>
+</div>
+</aside>
+<main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+<!-- TopNavBar Component -->
+<header class="flex justify-between items-center px-6 h-16 w-full bg-[#f8f9ff] dark:bg-slate-950 docked full-width top-0 z-50">
+<div class="flex items-center space-x-6">
+<div class="flex items-center space-x-2 md:hidden">
+<span class="text-xl font-bold text-[#00685f] tracking-tight font-headline">Lantern</span>
+</div>
+<div class="hidden lg:flex items-center bg-[#eff4ff] px-3 py-1.5 rounded-lg border border-outline-variant/20">
+<span class="material-symbols-outlined text-secondary mr-2" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-48 font-body" placeholder="Search workers..." type="text"/>
+</div>
+<nav class="hidden md:flex space-x-6 items-center">
+<a class="font-manrope text-sm font-medium text-[#515f74] hover:text-[#00685f]" href="#">Overview</a>
+<a class="font-manrope text-sm font-bold text-[#00685f] border-b-2 border-[#00685f] py-5" href="#">Workers</a>
+<a class="font-manrope text-sm font-medium text-[#515f74] hover:text-[#00685f]" href="#">Activity</a>
+</nav>
+</div>
+<div class="flex items-center space-x-4">
+<div class="hidden sm:flex items-center px-3 py-1 bg-[#eff4ff] rounded-full">
+<span class="w-2 h-2 bg-primary rounded-full mr-2"></span>
+<span class="text-xs font-label text-primary font-medium">Status: Online</span>
+</div>
+<button class="hidden sm:block px-4 py-1.5 bg-primary text-white rounded-lg text-sm font-medium font-body hover:bg-primary-container transition-colors">
+                    Connect
+                </button>
+<div class="flex items-center space-x-2">
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="settings_remote">settings_remote</span>
+</button>
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border-2 border-primary/20">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="close-up portrait of a professional man with a friendly expression in a clean corporate headshot style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtsKavQy6x7QdlmenbV62Vn2YCMLJJFK3WWDkqfzJDl4zyEUstbGBXoGFcNI8N6t6_1Wgkw2zfeDIqL1-tzkEcwHFeI4NjqvgE-Yx3R_GNEeManUpT5Zr6fLxqIxakgH6vI7aWADUSprOgKC4Ce3FpiRBVEwnZR-7lAwp8vkLIp8z7RuSQeNB_FAhxKlZ6pmorBJ7QhTlRvnD8iKsSRegkXGE5bKrffSPcsy_jrL13tU7Y3EkdIEY0V5yJcpMfdseb-EkJUofYFlY"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Content Area -->
+<div class="flex-1 overflow-y-auto p-6 lg:p-10 space-y-10">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<h1 class="text-4xl font-extrabold font-headline tracking-tight text-on-surface mb-2">Fleet Operations</h1>
+<p class="text-secondary max-w-lg font-body">Manage distributed compute resources and monitor real-time execution across the Luminous network.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex -space-x-3 overflow-hidden">
+<img alt="Member" class="inline-block h-10 w-10 rounded-full ring-2 ring-background" data-alt="professional woman in business attire with soft lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAa4rOTtzZdb0cPOr-1xngdJ6U_rqwPzGxAoFKS9x9h2LHrydYUNoiCN4JKc1XKHfIws8nT7nYEDLSHGGxRV48eBS1t8JfHc9tkX0-GInQDq6HcM2DlhzQoEy9-rIakECsiOV5wZIT8JKZOeCbsH1PqOmRA7_d41QWRQkiTS6NE3KSfmlkLZXpi12frIBqKoAqGLBbjkp-YvdzpxNggPTvp8m9_5sFW1Wd6rNSf_4m9_wknz8J9pgVED_IoZz8DeNyn1am6AE2xOks"/>
+<img alt="Member" class="inline-block h-10 w-10 rounded-full ring-2 ring-background" data-alt="young male engineer in casual clothes with focused expression" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA174_TZfvRSYeGSkKQc1JozozhkTe7B5xMD-mvtLsrNt3oTSulb0AcW_FSPxF9oNY10nDATynK7LCI221DuzsyQgFT_K_uxy27q_5K41wFBby5JswZlAFkgrZ0XG6c1nfDmC8uv22tE9HWFGcNakjMwQ25IzKrg5nE9ThMLW5fYxUbhYY2TsYREqdonbdQf1wHEtS4SkKcYQOQ1Ht_1eN2hCIh4k3l98q-8rfHyrj-mfPEJFVE4WhAkPZ8Xzz8NZAS3L44j7151K4"/>
+<div class="h-10 w-10 rounded-full ring-2 ring-background bg-surface-container-high flex items-center justify-center text-xs font-bold text-primary">+12</div>
+</div>
+<span class="text-xs font-label text-secondary uppercase tracking-wider">Active Operators</span>
+</div>
+</div>
+<!-- Bento Grid Main Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Workers Section (Column 1-8) -->
+<section class="lg:col-span-8 space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-xl font-bold font-headline flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="terminal">terminal</span>
+                            Active Workers
+                        </h3>
+<div class="flex items-center gap-2 text-xs font-label text-secondary">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary"></span> 14 Ready</span>
+<span class="flex items-center gap-1 ml-3"><span class="w-2 h-2 rounded-full bg-tertiary"></span> 3 Busy</span>
+</div>
+</div>
+<!-- Workers Cards/Table -->
+<div class="space-y-4">
+<!-- Worker Row 1 -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center gap-6">
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="dns">dns</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-3 mb-1">
+<h4 class="font-bold font-headline text-on-surface">worker-alpha-01</h4>
+<span class="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold font-label uppercase tracking-tight">Ready</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-body text-secondary">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="psychology">psychology</span> LLM-Inference, Vision</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span> 2m ago</span>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="text-[10px] font-label text-secondary uppercase">Current Task</span>
+<span class="text-sm font-semibold text-primary">Idle / Awaiting Job</span>
+</div>
+</div>
+<!-- Worker Row 2 -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center gap-6 border-l-4 border-tertiary">
+<div class="w-12 h-12 rounded-xl bg-tertiary/10 flex items-center justify-center text-tertiary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="memory">memory</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-3 mb-1">
+<h4 class="font-bold font-headline text-on-surface">node-compute-gpu-9</h4>
+<span class="px-2 py-0.5 rounded-full bg-tertiary/10 text-tertiary text-[10px] font-bold font-label uppercase tracking-tight">Busy</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-body text-secondary">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="cloud_sync">cloud_sync</span> Batch-Processing</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span> Just now</span>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 text-right">
+<span class="text-[10px] font-label text-secondary uppercase">Current Task</span>
+<span class="text-sm font-semibold text-on-surface truncate max-w-[150px]">vid_transcode_772.mp4</span>
+</div>
+</div>
+<!-- Worker Row 3 -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center gap-6 opacity-70">
+<div class="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="router">router</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-3 mb-1">
+<h4 class="font-bold font-headline text-on-surface">edge-relay-london</h4>
+<span class="px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-[10px] font-bold font-label uppercase tracking-tight">Stale</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-body text-secondary">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="lan">lan</span> Proxy, Caching</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span> 45m ago</span>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="text-[10px] font-label text-secondary uppercase">Current Task</span>
+<span class="text-sm font-semibold text-secondary">Disconnected</span>
+</div>
+</div>
+<!-- Worker Row 4 -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center gap-6">
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="storage">storage</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-3 mb-1">
+<h4 class="font-bold font-headline text-on-surface">storage-shard-04</h4>
+<span class="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold font-label uppercase tracking-tight">Ready</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-body text-secondary">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="database">database</span> Cold-Storage, Indexing</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span> 12s ago</span>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="text-[10px] font-label text-secondary uppercase">Current Task</span>
+<span class="text-sm font-semibold text-primary">Idle / Awaiting Job</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Activity Sidebar (Column 9-12) -->
+<aside class="lg:col-span-4 space-y-6">
+<div class="bg-surface-container-low rounded-2xl p-6 h-full flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-lg font-bold font-headline">Recent Activity</h3>
+<button class="p-2 hover:bg-white rounded-lg transition-colors">
+<span class="material-symbols-outlined text-secondary" data-icon="filter_list">filter_list</span>
+</button>
+</div>
+<!-- Filters -->
+<div class="flex flex-wrap gap-2 mb-8">
+<button class="px-3 py-1 bg-white text-primary text-xs font-label rounded-full border border-primary/20 shadow-sm">All</button>
+<button class="px-3 py-1 hover:bg-white text-secondary text-xs font-label rounded-full transition-colors">Jobs</button>
+<button class="px-3 py-1 hover:bg-white text-secondary text-xs font-label rounded-full transition-colors">Network</button>
+<button class="px-3 py-1 hover:bg-white text-secondary text-xs font-label rounded-full transition-colors">Security</button>
+</div>
+<!-- Unified Timeline -->
+<div class="space-y-6 relative before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-outline-variant/30">
+<!-- Event 1 -->
+<div class="relative pl-8 group">
+<div class="absolute left-0 top-1 w-[24px] h-[24px] rounded-full bg-primary-container flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-on-primary-container" data-icon="upload_file">upload_file</span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="text-[10px] font-label text-primary font-bold tracking-widest uppercase">file.upload</span>
+<span class="text-[10px] font-body text-secondary">2m ago</span>
+</div>
+<p class="text-xs font-body text-on-surface leading-snug">Dataset <span class="font-semibold">training_v2.csv</span> uploaded by admin.</p>
+<div class="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-surface-container-highest rounded-md w-fit">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="text-[9px] font-label text-on-surface-variant font-medium">Success</span>
+</div>
+</div>
+</div>
+<!-- Event 2 -->
+<div class="relative pl-8 group">
+<div class="absolute left-0 top-1 w-[24px] h-[24px] rounded-full bg-tertiary-container flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-white" data-icon="add_task">add_task</span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="text-[10px] font-label text-tertiary-container font-bold tracking-widest uppercase">job.created</span>
+<span class="text-[10px] font-body text-secondary">15m ago</span>
+</div>
+<p class="text-xs font-body text-on-surface leading-snug">Job <span class="font-semibold">#7729-Alpha</span> queued for GPU workers.</p>
+</div>
+</div>
+<!-- Event 3 -->
+<div class="relative pl-8 group">
+<div class="absolute left-0 top-1 w-[24px] h-[24px] rounded-full bg-error-container flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-error" data-icon="bolt" data-weight="fill" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="text-[10px] font-label text-error font-bold tracking-widest uppercase">node.stale</span>
+<span class="text-[10px] font-body text-secondary">48m ago</span>
+</div>
+<p class="text-xs font-body text-on-surface leading-snug">Connection lost with <span class="font-semibold text-error">edge-relay-london</span>.</p>
+<div class="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-error-container/30 rounded-md w-fit">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+<span class="text-[9px] font-label text-error font-medium">Critical</span>
+</div>
+</div>
+</div>
+<!-- Event 4 -->
+<div class="relative pl-8 group">
+<div class="absolute left-0 top-1 w-[24px] h-[24px] rounded-full bg-secondary-container flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-on-secondary-container" data-icon="settings">settings</span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="text-[10px] font-label text-secondary font-bold tracking-widest uppercase">config.update</span>
+<span class="text-[10px] font-body text-secondary">1h ago</span>
+</div>
+<p class="text-xs font-body text-on-surface leading-snug">Network routing protocol updated to v2.4.1.</p>
+</div>
+</div>
+</div>
+<button class="mt-10 w-full py-3 border border-outline-variant/30 rounded-xl text-xs font-label font-bold text-secondary hover:bg-white transition-colors uppercase tracking-widest">
+                            View Full Audit Log
+                        </button>
+</div>
+</aside>
+</div>
+<!-- Dashboard Visualization Accent -->
+<div class="bg-primary/5 rounded-3xl p-8 border border-primary/10 relative overflow-hidden">
+<div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+<div class="space-y-4">
+<div class="inline-flex items-center px-3 py-1 bg-primary/10 rounded-full text-primary text-[10px] font-bold font-label uppercase">Network Capacity</div>
+<h2 class="text-3xl font-extrabold font-headline text-on-surface">94.2% Efficiency</h2>
+<p class="text-secondary font-body max-w-sm">Your worker fleet is currently optimized for high-throughput batch operations. Latency is within nominal ranges across all 12 zones.</p>
+<div class="flex gap-6 pt-2">
+<div>
+<div class="text-2xl font-bold font-headline text-primary">48.2 GB/s</div>
+<div class="text-[10px] font-label text-secondary uppercase">Ingress</div>
+</div>
+<div class="w-[1px] bg-outline-variant/30"></div>
+<div>
+<div class="text-2xl font-bold font-headline text-primary">12.5 ms</div>
+<div class="text-[10px] font-label text-secondary uppercase">Avg Latency</div>
+</div>
+</div>
+</div>
+<div class="w-full md:w-1/2 h-48 bg-white/40 rounded-2xl backdrop-blur-sm border border-white/60 p-4 relative">
+<!-- Decorative Abstract Visualization -->
+<div class="absolute inset-0 flex items-end justify-between px-6 pb-6 gap-2">
+<div class="w-full bg-primary/20 h-1/3 rounded-t-lg"></div>
+<div class="w-full bg-primary/30 h-1/2 rounded-t-lg"></div>
+<div class="w-full bg-primary h-3/4 rounded-t-lg"></div>
+<div class="w-full bg-primary/40 h-2/3 rounded-t-lg"></div>
+<div class="w-full bg-primary/10 h-1/4 rounded-t-lg"></div>
+<div class="w-full bg-primary/50 h-1/2 rounded-t-lg"></div>
+<div class="w-full bg-primary h-full rounded-t-lg"></div>
+<div class="w-full bg-primary/60 h-3/4 rounded-t-lg"></div>
+<div class="w-full bg-primary/30 h-1/2 rounded-t-lg"></div>
+</div>
+</div>
+</div>
+<!-- Abstract Background Ornament -->
+<div class="absolute -right-20 -bottom-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
+</div>
+</div>
+</main>
+<!-- Contextual FAB (Only on Mobile for Primary Action) -->
+<button class="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-[60]">
+<span class="material-symbols-outlined text-2xl" data-icon="add">add</span>
+</button>
+</body></html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@600;700;800&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#825100",
+              "on-error": "#ffffff",
+              "surface-variant": "#d3e4fe",
+              "on-primary-fixed": "#00201d",
+              "on-error-container": "#93000a",
+              "primary-container": "#008378",
+              "surface-container-highest": "#d3e4fe",
+              "outline": "#717786",
+              "tertiary-fixed-dim": "#ffb95f",
+              "surface-container-low": "#eff4ff",
+              "primary-fixed-dim": "#6bd8cb",
+              "on-tertiary-fixed-variant": "#653e00",
+              "secondary-fixed": "#d5e3fc",
+              "primary": "#00685f",
+              "on-tertiary-fixed": "#2a1700",
+              "error": "#ba1a1a",
+              "on-primary-container": "#f4fffc",
+              "background": "#f8f9ff",
+              "on-surface": "#0b1c30",
+              "secondary-fixed-dim": "#b9c7df",
+              "on-tertiary-container": "#fffbff",
+              "secondary": "#515f74",
+              "secondary-container": "#d5e3fc",
+              "surface-bright": "#f8f9ff",
+              "on-secondary-fixed": "#0d1c2e",
+              "on-secondary-fixed-variant": "#3a485b",
+              "surface-container-high": "#dce9ff",
+              "error-container": "#ffdad6",
+              "on-secondary-container": "#57657a",
+              "surface-tint": "#006a61",
+              "outline-variant": "#c1c6d7",
+              "on-tertiary": "#ffffff",
+              "surface-dim": "#cbdbf5",
+              "inverse-surface": "#213145",
+              "on-primary": "#ffffff",
+              "surface": "#f8f9ff",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-container": "#a36700",
+              "primary-fixed": "#89f5e7",
+              "inverse-primary": "#6bd8cb",
+              "surface-container": "#e5eeff",
+              "on-background": "#0b1c30",
+              "tertiary-fixed": "#ffddb8",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#414754",
+              "inverse-on-surface": "#eaf1ff",
+              "on-primary-fixed-variant": "#005049"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f8f9ff;
+        color: #0b1c30;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(16px);
+      }
+    </style>
+</head>
+<body class="flex min-h-screen">
+<!-- SideNavBar Component -->
+<aside class="hidden md:flex flex-col p-4 space-y-2 docked left-0 h-screen w-64 bg-[#eff4ff] dark:bg-slate-900/50 backdrop-blur-lg shadow-xl shadow-slate-200/50 dark:shadow-none font-manrope text-sm fixed">
+<div class="flex items-center gap-3 px-2 mb-8 mt-2">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-container flex items-center justify-center text-white">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">light_mode</span>
+</div>
+<div>
+<h1 class="text-lg font-bold text-[#00685f]">Lantern Node</h1>
+<p class="text-xs text-secondary font-label">coordinator.local</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<!-- Active: Overview -->
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 text-[#00685f] dark:text-teal-300 font-semibold rounded-lg shadow-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] dark:text-slate-400 hover:bg-[#f8f9ff] dark:hover:bg-slate-800 hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined">swap_horiz</span>
+<span>File Transfer</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] dark:text-slate-400 hover:bg-[#f8f9ff] dark:hover:bg-slate-800 hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined">memory</span>
+<span>Compute</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] dark:text-slate-400 hover:bg-[#f8f9ff] dark:hover:bg-slate-800 hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span>Workers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] dark:text-slate-400 hover:bg-[#f8f9ff] dark:hover:bg-slate-800 hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined">history</span>
+<span>Activity</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] dark:text-slate-400 hover:bg-[#f8f9ff] dark:hover:bg-slate-800 hover:translate-x-1 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 border-t border-outline-variant/20 space-y-1">
+<button class="w-full bg-gradient-to-br from-primary to-primary-container text-white py-3 rounded-xl font-body font-medium mb-4 shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity">
+                Deploy Worker
+            </button>
+<a class="flex items-center gap-3 px-4 py-2 text-[#515f74] hover:translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined">help</span>
+<span>Help</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#515f74] hover:translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined">description</span>
+<span>Documentation</span>
+</a>
+</div>
+</aside>
+<main class="flex-1 md:ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar Component -->
+<header class="flex justify-between items-center px-6 h-16 w-full docked full-width top-0 z-50 bg-[#f8f9ff] dark:bg-slate-950 sticky">
+<div class="flex items-center gap-8">
+<div class="md:hidden text-xl font-bold text-[#00685f] tracking-tight">Lantern</div>
+<div class="hidden md:flex items-center gap-6">
+<a class="font-manrope text-sm font-bold text-[#00685f] dark:text-teal-400 border-b-2 border-[#00685f]" href="#">Overview</a>
+<a class="font-manrope text-sm font-medium text-[#515f74] dark:text-slate-400 hover:text-[#00685f] transition-colors" href="#">Workers</a>
+<a class="font-manrope text-sm font-medium text-[#515f74] dark:text-slate-400 hover:text-[#00685f] transition-colors" href="#">Activity</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden lg:flex items-center bg-[#eff4ff] px-3 py-1.5 rounded-full text-[10px] font-label font-bold text-primary tracking-wider uppercase">
+                    Status: Online
+                </div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined">settings_remote</span>
+</button>
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors">
+<span class="material-symbols-outlined">sensors</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container overflow-hidden ml-2">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="minimalist user avatar placeholder with soft neutral colors" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjt1gAUEnRoftD3HA2acd8JJy5W8R9wpDkr0SR8Kk1n4bdPMw5r20B-epNCeLC8TXx5-ZOk-soVIACReuQZVWPRqhsqXwPVaBAdMsvha2Q1SD3H_Z451mou7u3EbmtHUwVnLiCgwfd4x3qkcicpuJ3E8b36bcaiU7lB04jdA-nGMXV0uZBZuiQpaoaSuWLIONndtVwfenfBd02xm9DZiLYbDYk8TMMLUXP9qH_uUhm4mg9tjqcduo_txrSpt1Stc353huY2KOWDyg"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-8 space-y-8">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h2 class="text-4xl font-headline font-extrabold text-on-surface tracking-tight">Node Overview</h2>
+<p class="text-secondary font-body mt-2">Managing 4 active clusters across decentralized regions.</p>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-5 py-2.5 bg-surface-container-lowest text-primary font-label text-sm font-bold rounded-xl shadow-sm hover:shadow-md transition-shadow">
+<span class="material-symbols-outlined text-sm">download</span>
+                        Export Report
+                    </button>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary font-label text-sm font-bold rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm">add</span>
+                        New Job
+                    </button>
+</div>
+</div>
+<!-- Bento Grid KPI Section -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- KPI: Active Uploads -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between h-40">
+<div class="flex justify-between items-start">
+<span class="text-secondary font-label text-xs font-bold uppercase tracking-widest">Active Uploads</span>
+<span class="material-symbols-outlined text-primary">cloud_upload</span>
+</div>
+<div>
+<div class="text-3xl font-headline font-extrabold text-primary">12</div>
+<div class="text-xs text-secondary font-body mt-1">4.2 GB remaining • <span class="text-primary-container font-bold">880 Mbps</span></div>
+</div>
+</div>
+<!-- KPI: Files Available -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm flex flex-col justify-between h-40">
+<div class="flex justify-between items-start">
+<span class="text-secondary font-label text-xs font-bold uppercase tracking-widest">Files Available</span>
+<span class="material-symbols-outlined text-primary">folder_open</span>
+</div>
+<div>
+<div class="text-3xl font-headline font-extrabold text-on-surface">1,402</div>
+<div class="text-xs text-secondary font-body mt-1">Total volume: 1.2 TB</div>
+</div>
+</div>
+<!-- KPI: Workers -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm flex flex-col justify-between h-40">
+<div class="flex justify-between items-start">
+<span class="text-secondary font-label text-xs font-bold uppercase tracking-widest">Active Workers</span>
+<span class="material-symbols-outlined text-primary">engineering</span>
+</div>
+<div>
+<div class="text-3xl font-headline font-extrabold text-on-surface">64 / 72</div>
+<div class="text-xs text-secondary font-body mt-1">Utilization: <span class="text-primary-container font-bold">89%</span></div>
+</div>
+</div>
+<!-- KPI: Throughput -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm flex flex-col justify-between h-40 overflow-hidden relative">
+<div class="flex justify-between items-start z-10">
+<span class="text-secondary font-label text-xs font-bold uppercase tracking-widest">Network Throughput</span>
+<span class="material-symbols-outlined text-primary">speed</span>
+</div>
+<div class="z-10">
+<div class="text-3xl font-headline font-extrabold text-on-surface">2.4 Gbps</div>
+<div class="text-xs text-secondary font-body mt-1">Peak: 3.1 Gbps (2h ago)</div>
+</div>
+<div class="absolute bottom-0 left-0 w-full h-12 opacity-20 pointer-events-none">
+<div class="w-full h-full bg-gradient-to-t from-primary-container to-transparent"></div>
+</div>
+</div>
+</div>
+<!-- Main Dashboard Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- Center: Compute Jobs (Bento Large) -->
+<div class="lg:col-span-2 space-y-6">
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-sm">
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-xl font-headline font-bold text-on-surface">Compute Jobs</h3>
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-primary/10 text-primary font-label text-[10px] font-bold rounded-full">LIVE</span>
+<span class="px-3 py-1 bg-surface-container text-secondary font-label text-[10px] font-bold rounded-full">BATCH MODE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+<div class="p-4 bg-surface-container-low rounded-xl">
+<div class="text-xs font-label text-secondary mb-1">Queued</div>
+<div class="text-2xl font-headline font-extrabold">24</div>
+</div>
+<div class="p-4 bg-primary/5 rounded-xl border border-primary/10">
+<div class="text-xs font-label text-primary-container mb-1">Running</div>
+<div class="text-2xl font-headline font-extrabold text-primary">08</div>
+</div>
+<div class="p-4 bg-surface-container-low rounded-xl">
+<div class="text-xs font-label text-secondary mb-1">Completed</div>
+<div class="text-2xl font-headline font-extrabold text-on-surface">1,204</div>
+</div>
+<div class="p-4 bg-error/5 rounded-xl">
+<div class="text-xs font-label text-error mb-1">Failed</div>
+<div class="text-2xl font-headline font-extrabold text-error">02</div>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between p-4 bg-surface-bright rounded-xl border-l-4 border-primary shadow-sm">
+<div class="flex items-center gap-4">
+<div class="p-2 bg-primary/10 text-primary rounded-lg">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+<div>
+<div class="text-sm font-body font-bold text-on-surface">Genomic-Seq-Cluster-X2</div>
+<div class="text-[10px] font-label text-secondary">ID: job_9921_bc4 • 45/100 Nodes Active</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-label font-bold text-primary">64%</div>
+<div class="w-24 h-1.5 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full bg-primary" style="width: 64%;"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-bright rounded-xl border-l-4 border-primary shadow-sm">
+<div class="flex items-center gap-4">
+<div class="p-2 bg-primary/10 text-primary rounded-lg">
+<span class="material-symbols-outlined">3d</span>
+</div>
+<div>
+<div class="text-sm font-body font-bold text-on-surface">Scene-Render-4K-Final</div>
+<div class="text-[10px] font-label text-secondary">ID: job_4412_za0 • 12/12 Nodes Active</div>
+</div>
+</div>
+<div class="text-right">
+<div class="text-xs font-label font-bold text-primary">89%</div>
+<div class="w-24 h-1.5 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full bg-primary" style="width: 89%;"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Health Section -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between">
+<div class="flex items-center justify-between mb-4">
+<h4 class="font-headline font-bold text-sm text-secondary">Storage Health</h4>
+<span class="material-symbols-outlined text-secondary text-sm">storage</span>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-xs font-label">
+<span>NVMe Pool A</span>
+<span class="font-bold">72% Full</span>
+</div>
+<div class="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary" style="width: 72%;"></div>
+</div>
+<div class="flex justify-between text-[10px] text-secondary font-body">
+<span>864 GB Used</span>
+<span>336 GB Free</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl">
+<div class="flex items-center justify-between mb-6">
+<h4 class="font-headline font-bold text-sm text-secondary">System Pulse</h4>
+<div class="flex items-center gap-1.5">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] font-label font-bold text-primary-container">ACTIVE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-tighter">Heartbeat</p>
+<p class="text-sm font-body font-bold text-on-surface">240ms ago</p>
+</div>
+<div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-tighter">Temp</p>
+<p class="text-sm font-body font-bold text-tertiary">42°C</p>
+</div>
+<div class="col-span-2 pt-2 border-t border-outline-variant/20 flex items-center justify-between">
+<span class="text-[10px] font-label text-secondary">Compute Toggle</span>
+<div class="w-8 h-4 bg-primary rounded-full relative">
+<div class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Recent Activity -->
+<div class="space-y-6">
+<div class="bg-white/60 backdrop-blur-xl rounded-xl p-6 shadow-sm flex flex-col h-full border border-white">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-lg font-headline font-bold text-on-surface">Activity Feed</h3>
+<button class="text-primary text-xs font-label font-bold">View All</button>
+</div>
+<div class="space-y-6 flex-1 overflow-y-auto pr-2">
+<!-- Activity Item -->
+<div class="flex gap-4 relative">
+<div class="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-surface-container"></div>
+<div class="z-10 w-8 h-8 rounded-full bg-primary-container text-white flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">check_circle</span>
+</div>
+<div class="flex-1 pb-4">
+<p class="text-sm font-body text-on-surface leading-snug">
+<span class="font-bold">Job coordinator-v3</span> successfully completed on 12 nodes.
+                                    </p>
+<p class="text-[11px] font-label text-secondary mt-1">2 mins ago • Compute</p>
+</div>
+</div>
+<!-- Activity Item -->
+<div class="flex gap-4 relative">
+<div class="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-surface-container"></div>
+<div class="z-10 w-8 h-8 rounded-full bg-surface-container text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">file_download</span>
+</div>
+<div class="flex-1 pb-4">
+<p class="text-sm font-body text-on-surface leading-snug">
+<span class="font-bold">dataset_alpha.tar.gz</span> received from Node "Berlin-01".
+                                    </p>
+<p class="text-[11px] font-label text-secondary mt-1">14 mins ago • Transfer</p>
+</div>
+</div>
+<!-- Activity Item -->
+<div class="flex gap-4 relative">
+<div class="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-surface-container"></div>
+<div class="z-10 w-8 h-8 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">warning</span>
+</div>
+<div class="flex-1 pb-4">
+<p class="text-sm font-body text-on-surface leading-snug">
+<span class="font-bold">Worker Node-88</span> reported high latency (450ms).
+                                    </p>
+<p class="text-[11px] font-label text-secondary mt-1">45 mins ago • Worker Health</p>
+</div>
+</div>
+<!-- Activity Item -->
+<div class="flex gap-4 relative">
+<div class="z-10 w-8 h-8 rounded-full bg-surface-container text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">person_add</span>
+</div>
+<div class="flex-1 pb-4">
+<p class="text-sm font-body text-on-surface leading-snug">
+                                        New worker <span class="font-bold">Node-92</span> provisioned by AWS Auto-scaler.
+                                    </p>
+<p class="text-[11px] font-label text-secondary mt-1">1h 12m ago • Infrastructure</p>
+</div>
+</div>
+</div>
+<!-- Footer Info in Activity Sidebar -->
+<div class="mt-6 pt-6 border-t border-outline-variant/20">
+<div class="flex items-center gap-4 bg-surface-container-low p-4 rounded-xl">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">hub</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-label font-bold text-on-surface">Regional Clusters</p>
+<div class="flex gap-1 mt-1">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<div class="w-1.5 h-1.5 rounded-full bg-outline-variant"></div>
+</div>
+</div>
+<span class="text-xs font-body font-bold text-secondary">3/4</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Contextual FAB (Only for main overview) -->
+<button class="fixed bottom-8 right-8 w-14 h-14 bg-primary text-white rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
+</button>
+</body></html>

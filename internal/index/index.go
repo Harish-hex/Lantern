@@ -41,35 +41,81 @@ type StoredFileSnapshot struct {
 }
 
 type ComputeJobSnapshot struct {
-	ID             string    `json:"id"`
-	Type           string    `json:"type"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	TotalTasks     int       `json:"total_tasks"`
-	CompletedTasks int       `json:"completed_tasks"`
-	FailedTasks    int       `json:"failed_tasks"`
+	ID                   string                    `json:"id"`
+	Type                 string                    `json:"type"`
+	TemplateID           string                    `json:"template_id,omitempty"`
+	TemplateName         string                    `json:"template_name,omitempty"`
+	OutputKind           string                    `json:"output_kind,omitempty"`
+	Status               string                    `json:"status"`
+	Confidence           string                    `json:"confidence,omitempty"`
+	NeedsAttentionReason string                    `json:"needs_attention_reason,omitempty"`
+	FailureCategory      string                    `json:"failure_category,omitempty"`
+	CreatedAt            time.Time                 `json:"created_at"`
+	UpdatedAt            time.Time                 `json:"updated_at"`
+	StartedAt            time.Time                 `json:"started_at,omitempty"`
+	FinishedAt           time.Time                 `json:"finished_at,omitempty"`
+	TotalTasks           int                       `json:"total_tasks"`
+	CompletedTasks       int                       `json:"completed_tasks"`
+	FailedTasks          int                       `json:"failed_tasks"`
+	RetryingTasks        int                       `json:"retrying_tasks"`
+	Inputs               json.RawMessage           `json:"inputs,omitempty"`
+	Settings             json.RawMessage           `json:"settings,omitempty"`
+	Preflight            ComputePreflightSnapshot  `json:"preflight"`
+	Artifacts            []ComputeArtifactSnapshot `json:"artifacts,omitempty"`
 }
 
 type ComputeTaskSnapshot struct {
-	ID         string          `json:"id"`
-	JobID      string          `json:"job_id"`
-	WorkerID   string          `json:"worker_id,omitempty"`
-	Status     string          `json:"status"`
-	Attempt    int             `json:"attempt"`
-	LeaseUntil time.Time       `json:"lease_until,omitempty"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	Checksum   string          `json:"checksum,omitempty"`
-	Error      string          `json:"error,omitempty"`
-	Payload    json.RawMessage `json:"payload,omitempty"`
+	ID                   string          `json:"id"`
+	JobID                string          `json:"job_id"`
+	WorkerID             string          `json:"worker_id,omitempty"`
+	LastWorkerID         string          `json:"last_worker_id,omitempty"`
+	Status               string          `json:"status"`
+	Attempt              int             `json:"attempt"`
+	LeaseUntil           time.Time       `json:"lease_until,omitempty"`
+	UpdatedAt            time.Time       `json:"updated_at"`
+	Checksum             string          `json:"checksum,omitempty"`
+	Error                string          `json:"error,omitempty"`
+	FailureCategory      string          `json:"failure_category,omitempty"`
+	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
+	Payload              json.RawMessage `json:"payload,omitempty"`
 }
 
 type ComputeWorkerSnapshot struct {
-	ID           string    `json:"id"`
-	Status       string    `json:"status"`
-	LastSeen     time.Time `json:"last_seen"`
-	LeaseUntil   time.Time `json:"lease_until,omitempty"`
-	Capabilities []string  `json:"capabilities,omitempty"`
+	ID                 string    `json:"id"`
+	Status             string    `json:"status"`
+	LastSeen           time.Time `json:"last_seen"`
+	LeaseUntil         time.Time `json:"lease_until,omitempty"`
+	Capabilities       []string  `json:"capabilities,omitempty"`
+	CompletedTasks     int       `json:"completed_tasks"`
+	FailedTasks        int       `json:"failed_tasks"`
+	StaleReassignments int       `json:"stale_reassignments"`
+	ReliabilityScore   float64   `json:"reliability_score"`
+	Disabled           bool      `json:"disabled"`
+	DisabledReason     string    `json:"disabled_reason,omitempty"`
+}
+
+type ComputePreflightSnapshot struct {
+	Ready                bool                            `json:"ready"`
+	Confidence           string                          `json:"confidence,omitempty"`
+	EstimatedTasks       int                             `json:"estimated_tasks"`
+	EstimatedOutputBytes int64                           `json:"estimated_output_bytes"`
+	RequiredCapabilities []string                        `json:"required_capabilities,omitempty"`
+	Checks               []ComputePreflightCheckSnapshot `json:"checks,omitempty"`
+}
+
+type ComputePreflightCheckSnapshot struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type ComputeArtifactSnapshot struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	SizeBytes int64           `json:"size_bytes"`
+	CreatedAt time.Time       `json:"created_at"`
+	Summary   json.RawMessage `json:"summary,omitempty"`
 }
 
 type Store interface {

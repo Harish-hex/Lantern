@@ -9,6 +9,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -22,6 +25,7 @@ import (
 	"github.com/Harish-hex/Lantern/internal/client"
 	"github.com/Harish-hex/Lantern/internal/config"
 	"github.com/Harish-hex/Lantern/internal/discovery"
+	"github.com/Harish-hex/Lantern/internal/protocol"
 	"github.com/Harish-hex/Lantern/internal/server"
 	"github.com/Harish-hex/Lantern/internal/web"
 	qrterminal "github.com/mdp/qrterminal/v3"
@@ -42,6 +46,12 @@ func main() {
 		cmdSend(os.Args[2:])
 	case "get":
 		cmdGet(os.Args[2:])
+	case "compute-submit":
+		cmdComputeSubmit(os.Args[2:])
+	case "compute-status":
+		cmdComputeStatus(os.Args[2:])
+	case "worker":
+		cmdWorker(os.Args[2:])
 	case "version":
 		fmt.Printf("Lantern v%s\n", version)
 	case "help", "-h", "--help":
@@ -308,6 +318,267 @@ func cmdGet(args []string) {
 	fmt.Println("✓ Download complete!")
 }
 
+// ──────────────────── compute-submit ────────────────────
+
+func cmdComputeSubmit(args []string) {
+	fs := flag.NewFlagSet("compute-submit", flag.ExitOnError)
+	host := fs.String("host", "127.0.0.1", "server host")
+	port := fs.Int("port", 9723, "server port")
+	jobID := fs.String("job-id", "", "optional job id")
+	templateID := fs.String("template", "data_processing_batch", "built-in template id")
+	jobType := fs.String("type", "", "legacy raw task type or alias for --template")
+	inputsJSON := fs.String("inputs", "", "template inputs as JSON")
+	settingsJSON := fs.String("settings", "", "template settings as JSON")
+	rawMode := fs.Bool("raw", false, "submit raw task payloads instead of a built-in template")
+	taskCount := fs.Int("tasks", 1, "number of demo tasks for raw mode")
+	taskPayload := fs.String("task-payload", "", "JSON payload template for each raw-mode task")
+	token := fs.String("token", "", "compute auth token (if required by server)")
+	fs.Parse(args)
+
+	c, err := client.New(*host, *port)
+	if err != nil {
+		log.Fatalf("connect: %v", err)
+	}
+	defer c.Close()
+
+	if strings.TrimSpace(*jobType) != "" && strings.TrimSpace(*templateID) == "" {
+		*templateID = *jobType
+	}
+
+	var resp *protocol.ControlPayload
+	if *rawMode {
+		if *taskCount <= 0 {
+			log.Fatal("tasks must be greater than zero")
+		}
+
+		tasks := make([]json.RawMessage, 0, *taskCount)
+		if strings.TrimSpace(*taskPayload) != "" {
+			var raw json.RawMessage
+			if err := json.Unmarshal([]byte(*taskPayload), &raw); err != nil {
+				log.Fatalf("invalid task-payload JSON: %v", err)
+			}
+			for i := 0; i < *taskCount; i++ {
+				tasks = append(tasks, append(json.RawMessage(nil), raw...))
+			}
+		} else {
+			for i := 0; i < *taskCount; i++ {
+				payload, err := json.Marshal(map[string]any{
+					"task_index": i,
+					"op":         "echo",
+				})
+				if err != nil {
+					log.Fatalf("build task payload: %v", err)
+				}
+				tasks = append(tasks, payload)
+			}
+		}
+
+		rawType := strings.TrimSpace(*jobType)
+		if rawType == "" {
+			rawType = "generic_v1"
+		}
+		resp, err = c.SubmitComputeJob(*jobID, rawType, *token, tasks)
+	} else {
+		var inputs json.RawMessage
+		var settings json.RawMessage
+		if strings.TrimSpace(*inputsJSON) != "" {
+			if err := json.Unmarshal([]byte(*inputsJSON), &inputs); err != nil {
+				log.Fatalf("invalid inputs JSON: %v", err)
+			}
+		}
+		if strings.TrimSpace(*settingsJSON) != "" {
+			if err := json.Unmarshal([]byte(*settingsJSON), &settings); err != nil {
+				log.Fatalf("invalid settings JSON: %v", err)
+			}
+		}
+		resp, err = c.SubmitComputeTemplateJob(*jobID, *templateID, *token, inputs, settings)
+	}
+	if err != nil {
+		log.Fatalf("submit job: %v", err)
+	}
+
+	var accepted struct {
+		Job client.ComputeJob `json:"job"`
+	}
+	if len(resp.Payload) > 0 {
+		_ = json.Unmarshal(resp.Payload, &accepted)
+	}
+
+	fmt.Println("✓ Compute job submitted")
+	fmt.Printf("Job ID: %s\n", resp.JobID)
+	fmt.Printf("Status: %s\n", resp.Status)
+	fmt.Printf("Info:   %s\n", resp.Message)
+	if accepted.Job.TemplateName != "" {
+		fmt.Printf("Template: %s\n", accepted.Job.TemplateName)
+	}
+	if accepted.Job.Confidence != "" {
+		fmt.Printf("Confidence: %s\n", accepted.Job.Confidence)
+	}
+	for _, check := range accepted.Job.Preflight.Checks {
+		fmt.Printf("Preflight [%s] %s\n", strings.ToUpper(check.Status), check.Message)
+	}
+}
+
+// ──────────────────── compute-status ────────────────────
+
+func cmdComputeStatus(args []string) {
+	fs := flag.NewFlagSet("compute-status", flag.ExitOnError)
+	host := fs.String("host", "127.0.0.1", "server host")
+	port := fs.Int("port", 9723, "server port")
+	jobID := fs.String("job-id", "", "job id")
+	watch := fs.Bool("watch", false, "poll status until terminal state")
+	interval := fs.Duration("interval", 2*time.Second, "watch poll interval")
+	token := fs.String("token", "", "compute auth token (if required by server)")
+	fs.Parse(args)
+
+	if *jobID == "" {
+		if fs.NArg() > 0 {
+			*jobID = fs.Arg(0)
+		} else {
+			log.Fatal("job id is required (use --job-id or positional argument)")
+		}
+	}
+
+	c, err := client.New(*host, *port)
+	if err != nil {
+		log.Fatalf("connect: %v", err)
+	}
+	defer c.Close()
+
+	for {
+		status, err := c.ComputeJobStatus(*jobID, *token)
+		if err != nil {
+			log.Fatalf("query job status: %v", err)
+		}
+
+		fmt.Printf("Job %s (%s): completed=%d failed=%d total=%d\n",
+			status.Job.ID,
+			status.Job.Status,
+			status.Job.CompletedTasks,
+			status.Job.FailedTasks,
+			status.Job.TotalTasks,
+		)
+		if status.Job.TemplateName != "" {
+			fmt.Printf("Template: %s | Confidence: %s\n", status.Job.TemplateName, status.Job.Confidence)
+		}
+		if status.Job.NeedsAttentionReason != "" {
+			fmt.Printf("Needs Attention: %s\n", status.Job.NeedsAttentionReason)
+		}
+		for _, task := range status.Tasks {
+			if task.Status == "queued" || task.Status == "leased" || task.Status == "retrying" || task.Status == "completed" || task.Status == "needs_attention" {
+				fmt.Printf("  - %s status=%s worker=%s attempt=%d\n", task.ID, task.Status, task.WorkerID, task.Attempt)
+			}
+		}
+		for _, artifact := range status.Job.Artifacts {
+			fmt.Printf("Artifact: %s (%s, %d bytes)\n", artifact.Name, artifact.Kind, artifact.SizeBytes)
+		}
+
+		if !*watch || (status.Job.Status == "done" || status.Job.Status == "needs_attention") {
+			return
+		}
+
+		time.Sleep(*interval)
+	}
+}
+
+// ──────────────────── worker ────────────────────
+
+func cmdWorker(args []string) {
+	fs := flag.NewFlagSet("worker", flag.ExitOnError)
+	host := fs.String("host", "127.0.0.1", "server host")
+	port := fs.Int("port", 9723, "server port")
+	workerID := fs.String("worker-id", "", "worker id")
+	capabilities := fs.String("capabilities", defaultWorkerCapabilityCSV(), "comma-separated capability list")
+	token := fs.String("token", "", "compute auth token (if required by server)")
+	heartbeat := fs.Duration("heartbeat", 5*time.Second, "worker heartbeat interval")
+	poll := fs.Duration("poll", 2*time.Second, "task claim poll interval")
+	oneShot := fs.Bool("oneshot", false, "exit after one successful task")
+	fs.Parse(args)
+
+	if *workerID == "" {
+		*workerID = fmt.Sprintf("worker-%d", time.Now().Unix())
+	}
+
+	capList := splitCSV(*capabilities)
+	c, err := client.New(*host, *port)
+	if err != nil {
+		log.Fatalf("connect: %v", err)
+	}
+	defer c.Close()
+
+	if err := c.RegisterWorker(*workerID, *token, capList); err != nil {
+		log.Fatalf("register worker: %v", err)
+	}
+	log.Printf("worker %s registered", *workerID)
+
+	nextHeartbeat := time.Now()
+	completed := 0
+	for {
+		now := time.Now()
+		if now.After(nextHeartbeat) {
+			if err := c.HeartbeatWorker(*workerID, *token); err != nil {
+				log.Printf("heartbeat failed: %v", err)
+			} else {
+				log.Printf("heartbeat ok")
+			}
+			nextHeartbeat = now.Add(*heartbeat)
+		}
+
+		resp, err := c.ClaimComputeTask(*workerID, *token)
+		if err != nil {
+			log.Printf("claim failed: %v", err)
+			time.Sleep(*poll)
+			continue
+		}
+		if resp.Type == protocol.CtrlNAK {
+			time.Sleep(*poll)
+			continue
+		}
+
+		payloadDigest := sha256.Sum256(resp.Payload)
+		checksum := "sha256:" + hex.EncodeToString(payloadDigest[:])
+
+		if err := c.CompleteComputeTask(*workerID, resp.TaskID, checksum, *token); err != nil {
+			log.Printf("task complete failed for %s: %v", resp.TaskID, err)
+			_ = c.FailComputeTask(*workerID, resp.TaskID, err.Error(), checksum, *token)
+			time.Sleep(*poll)
+			continue
+		}
+
+		completed++
+		log.Printf("completed task %s for job %s", resp.TaskID, resp.JobID)
+		if *oneShot && completed >= 1 {
+			log.Printf("oneshot mode complete")
+			return
+		}
+	}
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return strings.Split(defaultWorkerCapabilityCSV(), ",")
+	}
+	return out
+}
+
+func defaultWorkerCapabilityCSV() string {
+	capabilities := make([]string, 0, len(server.BuiltInComputeTemplates())+1)
+	for _, template := range server.BuiltInComputeTemplates() {
+		capabilities = append(capabilities, template.ID)
+	}
+	capabilities = append(capabilities, "generic_v1")
+	return strings.Join(capabilities, ",")
+}
+
 // ──────────────────── helpers ────────────────────
 
 func progressBar(pct float64, width int) string {
@@ -325,6 +596,9 @@ COMMANDS
   serve           Start the Lantern server
   send <files>    Upload files to a server
   get  <fileID>   Download a file by ID
+	compute-submit  Submit a compute job
+	compute-status  View compute job status
+	worker          Run a basic compute worker loop
   version         Print version
   help            Show this help
 
@@ -332,7 +606,10 @@ EXAMPLES
   lantern serve
   lantern serve -http-port 9724 -mdns
   lantern send -host 10.0.0.5 photo.jpg video.mp4
-  lantern get  -host 10.0.0.5 abc123_0`)
+	lantern get  -host 10.0.0.5 abc123_0
+	lantern compute-submit --tasks 3 --type generic_v1
+	lantern worker --worker-id worker-1 --oneshot
+	lantern compute-status --job-id job_123 --watch`)
 }
 
 func dashboardURLs(cfg config.Config) (rawURL, mdnsURL string) {

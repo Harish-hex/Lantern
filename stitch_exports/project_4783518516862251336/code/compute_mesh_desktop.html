@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lantern | Compute Monitoring</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@600;700;800&amp;family=Space+Grotesk:wght@500;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#825100",
+              "on-error": "#ffffff",
+              "surface-variant": "#d3e4fe",
+              "on-primary-fixed": "#00201d",
+              "on-error-container": "#93000a",
+              "primary-container": "#008378",
+              "surface-container-highest": "#d3e4fe",
+              "outline": "#717786",
+              "tertiary-fixed-dim": "#ffb95f",
+              "surface-container-low": "#eff4ff",
+              "primary-fixed-dim": "#6bd8cb",
+              "on-tertiary-fixed-variant": "#653e00",
+              "secondary-fixed": "#d5e3fc",
+              "primary": "#00685f",
+              "on-tertiary-fixed": "#2a1700",
+              "error": "#ba1a1a",
+              "on-primary-container": "#f4fffc",
+              "background": "#f8f9ff",
+              "on-surface": "#0b1c30",
+              "secondary-fixed-dim": "#b9c7df",
+              "on-tertiary-container": "#fffbff",
+              "secondary": "#515f74",
+              "secondary-container": "#d5e3fc",
+              "surface-bright": "#f8f9ff",
+              "on-secondary-fixed": "#0d1c2e",
+              "on-secondary-fixed-variant": "#3a485b",
+              "surface-container-high": "#dce9ff",
+              "error-container": "#ffdad6",
+              "on-secondary-container": "#57657a",
+              "surface-tint": "#006a61",
+              "outline-variant": "#c1c6d7",
+              "on-tertiary": "#ffffff",
+              "surface-dim": "#cbdbf5",
+              "inverse-surface": "#213145",
+              "on-primary": "#ffffff",
+              "surface": "#f8f9ff",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-container": "#a36700",
+              "primary-fixed": "#89f5e7",
+              "inverse-primary": "#6bd8cb",
+              "surface-container": "#e5eeff",
+              "on-background": "#0b1c30",
+              "tertiary-fixed": "#ffddb8",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#414754",
+              "inverse-on-surface": "#eaf1ff",
+              "on-primary-fixed-variant": "#005049"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(16px);
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary-fixed selection:text-on-primary-fixed">
+<div class="flex min-h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col p-4 space-y-2 bg-[#eff4ff] dark:bg-slate-900/50 backdrop-blur-lg left-0 h-screen w-64 z-40 shadow-xl shadow-slate-200/50">
+<div class="flex items-center gap-3 px-2 mb-8 mt-2">
+<div class="w-10 h-10 bg-primary-container rounded-xl flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+<div>
+<h1 class="text-lg font-bold text-[#00685f] font-headline tracking-tight">Lantern Node</h1>
+<p class="text-[10px] font-label uppercase tracking-widest text-secondary opacity-70">coordinator.local</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 font-manrope text-sm" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 font-manrope text-sm" href="#">
+<span class="material-symbols-outlined">swap_horiz</span>
+<span>File Transfer</span>
+</a>
+<!-- Active Tab: Compute -->
+<a class="flex items-center gap-3 px-4 py-3 bg-white text-[#00685f] font-semibold rounded-lg shadow-sm font-manrope text-sm translate-x-1" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">memory</span>
+<span>Compute</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 font-manrope text-sm" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span>Workers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 font-manrope text-sm" href="#">
+<span class="material-symbols-outlined">history</span>
+<span>Activity</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#515f74] hover:bg-[#f8f9ff] hover:translate-x-1 transition-transform duration-200 font-manrope text-sm" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="pt-4 mt-auto border-t border-outline-variant/20 space-y-1">
+<div class="px-4 py-3 mb-2">
+<button class="w-full py-2.5 bg-gradient-to-br from-primary to-primary-container text-white rounded-xl text-xs font-semibold shadow-md opacity-80 cursor-not-allowed flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">rocket_launch</span>
+                        Deploy Worker
+                    </button>
+</div>
+<a class="flex items-center gap-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] transition-colors text-sm font-manrope" href="#">
+<span class="material-symbols-outlined text-xl">help</span>
+<span>Help</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#515f74] hover:bg-[#f8f9ff] transition-colors text-sm font-manrope" href="#">
+<span class="material-symbols-outlined text-xl">description</span>
+<span>Documentation</span>
+</a>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-8 h-16 w-full bg-[#f8f9ff] sticky top-0 z-30">
+<div class="flex items-center gap-8">
+<div class="relative">
+<span class="absolute inset-y-0 left-3 flex items-center text-secondary opacity-50">
+<span class="material-symbols-outlined text-lg">search</span>
+</span>
+<input class="bg-surface-container-low border-none rounded-full pl-10 pr-4 py-1.5 text-xs w-64 focus:ring-2 focus:ring-primary/20 placeholder:text-secondary/50" placeholder="Search Jobs..." type="text"/>
+</div>
+<nav class="hidden lg:flex items-center gap-6">
+<a class="text-[#515f74] hover:text-[#00685f] font-manrope text-sm font-medium transition-colors" href="#">Overview</a>
+<a class="text-[#515f74] hover:text-[#00685f] font-manrope text-sm font-medium transition-colors" href="#">Workers</a>
+<a class="text-[#00685f] font-bold border-b-2 border-[#00685f] font-manrope text-sm py-5" href="#">Compute Activity</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-high/50 rounded-full">
+<div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+<span class="text-[10px] font-label font-bold text-primary uppercase tracking-tighter" id="clusterStatusBadge">Status: Connecting</span>
+</div>
+<div class="flex items-center gap-3 border-l border-outline-variant/20 pl-4">
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors"><span class="material-symbols-outlined">settings_remote</span></button>
+<button class="p-2 text-secondary hover:bg-[#eff4ff] rounded-full transition-colors"><span class="material-symbols-outlined">sensors</span></button>
+<div class="w-8 h-8 rounded-full bg-secondary-container overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Close up professional portrait of a tech professional with a clean modern studio background and soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmtBKcF_PTd2uK6nh0odtD8bNGdH75NsNOEXnWJJFhsinKZ8PJ5EpVM-ZK2TgmqmfXBgKQ_I5FEWukPALDl6OFieyQvX95hV66q6RJjHBnscMvWUftuyPn4EzQh7uBza6wzI2iU4AF8F5xrA9qQODVZXQdRpfmbARFYDYbzvxN2E5Lxy2HhWximVeXS3doS99l55rNHycMVxkJOMrY935zqZ-qv2vQqMf-UZ8xQmZlPqzwlMT2cZNEmDlFO0txPnFQOcN8xyBHGxA"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto p-8 space-y-8">
+<!-- Page Header & Metrics Bento -->
+<section class="space-y-6">
+<div class="flex justify-between items-end">
+<div>
+<h2 class="text-4xl font-headline font-extrabold text-on-surface tracking-tight">Compute Monitoring</h2>
+<p class="text-secondary font-body mt-1">Real-time oversight of distributed training and inference jobs.</p>
+</div>
+<div class="flex gap-3">
+<div class="group relative">
+<button class="px-6 py-2.5 bg-surface-container-high text-secondary rounded-xl text-sm font-semibold opacity-60 cursor-not-allowed border border-outline-variant/10">
+                                    Submit Job
+                                </button>
+<span class="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Coming Soon</span>
+</div>
+<button class="px-6 py-2.5 bg-gradient-to-br from-primary to-primary-container text-white rounded-xl text-sm font-semibold shadow-md flex items-center gap-2" id="refreshClusterBtn">
+<span class="material-symbols-outlined text-sm">refresh</span>
+                                Refresh Cluster
+                            </button>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low p-3">
+<label class="text-[10px] font-label uppercase tracking-wider text-secondary" for="computeToken">Compute Token</label>
+<input class="rounded-lg border border-outline-variant/30 bg-surface px-3 py-2 text-xs w-72 max-w-full" id="computeToken" placeholder="Optional unless token is enabled" type="password"/>
+<button class="px-3 py-2 text-xs font-semibold rounded-lg bg-surface-container-high text-on-surface" id="saveTokenBtn" type="button">Save</button>
+<button class="px-3 py-2 text-xs font-semibold rounded-lg bg-surface-container-high text-on-surface" id="clearTokenBtn" type="button">Clear</button>
+<span class="text-[10px] font-label text-secondary" id="computeApiStatus">Connecting to compute API...</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<div class="p-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/5">
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mb-1">Active Jobs</p>
+<h3 class="text-3xl font-headline font-bold text-primary" id="metricActiveJobs">-</h3>
+<div class="mt-4 flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span class="text-xs font-medium" id="metricActiveHint">Live from coordinator</span>
+</div>
+</div>
+<div class="p-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/5">
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mb-1">Success Rate</p>
+<h3 class="text-3xl font-headline font-bold text-on-surface" id="metricSuccessRate">-</h3>
+<div class="mt-4 w-full bg-surface-container-low h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full" id="metricSuccessBar" style="width: 0%"></div>
+</div>
+</div>
+<div class="p-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/5">
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mb-1">Queue Latency</p>
+<h3 class="text-3xl font-headline font-bold text-on-surface" id="metricQueueLatency">-</h3>
+<div class="mt-4 flex items-center gap-2 text-tertiary">
+<span class="material-symbols-outlined text-sm">timer</span>
+<span class="text-xs font-medium" id="metricQueueHint">Derived from queued jobs</span>
+</div>
+</div>
+<div class="p-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/5">
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mb-1">Worker Nodes</p>
+<h3 class="text-3xl font-headline font-bold text-on-surface" id="metricWorkerNodes">-</h3>
+<div class="mt-4 flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-xs font-medium" id="metricWorkerHint">Waiting for heartbeat data</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Jobs Table Container -->
+<section class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/5">
+<div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
+<h3 class="font-headline font-bold text-lg">Job Execution Pipeline</h3>
+<div class="flex gap-2">
+<button class="px-3 py-1.5 text-xs font-medium bg-surface-container-high text-on-surface rounded-lg transition-colors" id="filterAllBtn" type="button">All Types</button>
+<button class="px-3 py-1.5 text-xs font-medium bg-surface-container-low text-secondary rounded-lg hover:bg-surface-container-high transition-colors" id="filterRunningBtn" type="button">Running</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/30">
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest">Job ID</th>
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest">Process Type</th>
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest">Status</th>
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest">Progress (T/C/F)</th>
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest">Timestamps</th>
+<th class="px-6 py-4 text-[10px] font-label text-secondary uppercase tracking-widest text-right">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr>
+<td class="px-6 py-8 text-sm text-secondary" colspan="6" id="jobsLoadingRow">Loading jobs...</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+<!-- Details Side Drawer (Simulated) -->
+<aside class="fixed inset-y-0 right-0 w-[420px] bg-white border-l border-outline-variant/10 shadow-2xl z-50 transform transition-transform translate-x-full overflow-hidden flex flex-col" id="jobDrawer">
+<!-- Drawer Header -->
+<div class="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+<div>
+<h3 class="text-xl font-headline font-bold text-on-surface">Job Details</h3>
+<p class="font-label text-xs text-secondary" id="drawerJobId">ID: -</p>
+</div>
+<button class="p-2 hover:bg-surface-container-low rounded-full text-secondary transition-colors" id="closeDrawerBtn" type="button">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Drawer Content -->
+<div class="flex-1 overflow-y-auto p-6 space-y-8">
+<!-- Overview Stats -->
+<div class="grid grid-cols-2 gap-4">
+<div class="p-4 bg-surface-container-low rounded-xl">
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mb-1">Compute Type</p>
+<p class="font-body text-sm font-semibold" id="drawerComputeType">-</p>
+</div>
+<div class="p-4 bg-error-container/30 rounded-xl">
+<p class="text-[10px] font-label text-error uppercase tracking-widest mb-1">Failure Reason</p>
+<p class="font-body text-sm font-semibold text-error" id="drawerFailureReason">None</p>
+</div>
+</div>
+<!-- Task List -->
+<div class="space-y-4">
+<h4 class="font-label text-[10px] text-secondary uppercase tracking-[0.2em]">Worker Assignments</h4>
+<div class="space-y-3" id="drawerTaskList"></div>
+</div>
+<!-- Logs Preview -->
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<h4 class="font-label text-[10px] text-secondary uppercase tracking-[0.2em]">Execution Logs</h4>
+<button class="text-primary text-[10px] font-bold uppercase hover:underline">Download full log</button>
+</div>
+<div class="bg-on-surface rounded-xl p-4 font-mono text-[11px] text-[#eaf1ff] h-48 overflow-y-auto space-y-1" id="drawerLogs">
+<p class="opacity-50">Select a job to view execution logs.</p>
+</div>
+</div>
+</div>
+<!-- Drawer Footer -->
+<div class="p-6 border-t border-outline-variant/10 bg-surface-container-low flex gap-3">
+<button class="flex-1 py-3 bg-surface-container-highest text-secondary rounded-xl text-xs font-bold hover:bg-white transition-all border border-outline-variant/20">
+                    Re-queue Job
+                </button>
+<div class="group relative flex-1">
+<button class="w-full py-3 bg-error text-white rounded-xl text-xs font-bold opacity-60 cursor-not-allowed">
+                        Debug Console
+                    </button>
+<span class="absolute -top-10 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Coming Soon</span>
+</div>
+</div>
+</aside>
+</div>
+<script>
+  const computeState = {
+    jobs: [],
+    workers: [],
+    selectedJobId: "",
+    jobFilter: "all",
+  };
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>'"]/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;",
+    }[c]));
+  }
+
+  function fmtTime(v) {
+    if (!v) return "-";
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toLocaleString();
+  }
+
+  function tokenQuery() {
+    const token = localStorage.getItem("lantern_compute_token") || "";
+    return token ? `?token=${encodeURIComponent(token)}` : "";
+  }
+
+  async function apiGet(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (body && body.error) msg = body.error;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+
+  function statusPill(status) {
+    const s = String(status || "unknown").toLowerCase();
+    if (s === "running") return "bg-primary/10 text-primary";
+    if (s === "completed") return "bg-primary-container/10 text-primary-container";
+    if (s === "failed") return "bg-error/10 text-error";
+    return "bg-secondary-container/30 text-secondary";
+  }
+
+  function renderMetrics() {
+    const running = computeState.jobs.filter((j) => String(j.status).toLowerCase() === "running").length;
+    const totalCompleted = computeState.jobs.reduce((n, j) => n + (j.completed_tasks || 0), 0);
+    const totalFailed = computeState.jobs.reduce((n, j) => n + (j.failed_tasks || 0), 0);
+    const successRate = totalCompleted + totalFailed > 0
+      ? (100 * totalCompleted / (totalCompleted + totalFailed))
+      : 100;
+
+    const queued = computeState.jobs.filter((j) => {
+      const s = String(j.status || "").toLowerCase();
+      return s === "queued" || s === "pending";
+    });
+    const now = Date.now();
+    const avgQueueMs = queued.length
+      ? Math.round(queued.reduce((sum, j) => sum + Math.max(0, now - new Date(j.created_at).getTime()), 0) / queued.length)
+      : 0;
+
+    const healthy = computeState.workers.filter((w) => w.freshness === "healthy").length;
+
+    document.getElementById("metricActiveJobs").textContent = `${running}`;
+    document.getElementById("metricActiveHint").textContent = `${computeState.jobs.length} total jobs`;
+    document.getElementById("metricSuccessRate").textContent = `${successRate.toFixed(1)}%`;
+    document.getElementById("metricSuccessBar").style.width = `${Math.max(0, Math.min(100, successRate)).toFixed(1)}%`;
+
+    if (queued.length) {
+      document.getElementById("metricQueueLatency").textContent = `${avgQueueMs}ms`;
+      document.getElementById("metricQueueHint").textContent = `${queued.length} queued job(s)`;
+    } else {
+      document.getElementById("metricQueueLatency").textContent = "0ms";
+      document.getElementById("metricQueueHint").textContent = "No queued jobs";
+    }
+
+    document.getElementById("metricWorkerNodes").textContent = `${healthy} / ${computeState.workers.length}`;
+    document.getElementById("metricWorkerHint").textContent = computeState.workers.length
+      ? `${computeState.workers.filter((w) => w.freshness === "stale").length} stale` : "No workers yet";
+  }
+
+  function renderJobs() {
+    const body = document.querySelector("tbody.divide-y");
+    const filteredJobs = computeState.jobFilter === "running"
+      ? computeState.jobs.filter((j) => String(j.status || "").toLowerCase() === "running")
+      : computeState.jobs;
+
+    if (!filteredJobs.length) {
+      body.innerHTML = `<tr><td class=\"px-6 py-8 text-sm text-secondary\" colspan=\"6\">No jobs found (or token required).</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = filteredJobs.map((j) => {
+      const done = (j.completed_tasks || 0) + (j.failed_tasks || 0);
+      const total = j.total_tasks || 0;
+      const failed = j.failed_tasks || 0;
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      return `
+        <tr class="hover:bg-surface-container-low/50 transition-colors group">
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-2">
+              <span class="font-label text-sm text-on-surface font-semibold mono">${esc(j.id)}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-secondary text-lg">memory</span>
+              <span class="text-sm font-medium">${esc(j.type || "-")}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <span class="px-3 py-1 rounded-full text-[10px] font-label font-bold uppercase tracking-wider flex w-fit items-center gap-1.5 ${statusPill(j.status)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-current"></span>${esc(j.status || "unknown")}
+            </span>
+          </td>
+          <td class="px-6 py-4">
+            <div class="w-48 space-y-2">
+              <div class="flex justify-between text-[10px] font-label text-secondary">
+                <span>${done} / ${total}</span>
+                <span class="${failed > 0 ? "text-error" : "text-primary"}">${failed} Failed</span>
+              </div>
+              <div class="h-1.5 w-full bg-surface-container-low rounded-full overflow-hidden flex">
+                <div class="h-full bg-primary" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <div class="text-[11px] font-body text-secondary leading-tight">
+              <span class="block">Created: ${esc(fmtTime(j.created_at))}</span>
+              <span class="block opacity-70">Updated: ${esc(fmtTime(j.updated_at))}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4 text-right">
+            <button class="p-2 hover:bg-surface-container-high rounded-lg text-primary transition-all jobViewBtn" data-job-id="${esc(j.id)}" type="button">
+              <span class="material-symbols-outlined">visibility</span>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    document.querySelectorAll(".jobViewBtn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-job-id");
+        if (id) loadJobDetails(id);
+      });
+    });
+  }
+
+  function openDrawer() {
+    document.getElementById("jobDrawer").classList.remove("translate-x-full");
+    document.getElementById("jobDrawer").classList.add("translate-x-0");
+  }
+
+  function closeDrawer() {
+    document.getElementById("jobDrawer").classList.remove("translate-x-0");
+    document.getElementById("jobDrawer").classList.add("translate-x-full");
+  }
+
+  async function loadJobDetails(jobId) {
+    computeState.selectedJobId = jobId;
+    document.getElementById("drawerJobId").textContent = `ID: ${jobId}`;
+    document.getElementById("drawerComputeType").textContent = "Loading...";
+    document.getElementById("drawerFailureReason").textContent = "-";
+    document.getElementById("drawerTaskList").innerHTML = `<div class=\"text-xs text-secondary\">Loading worker assignments...</div>`;
+    document.getElementById("drawerLogs").innerHTML = `<p class=\"opacity-50\">Loading logs...</p>`;
+    openDrawer();
+
+    try {
+      const res = await apiGet(`/api/compute/jobs/${encodeURIComponent(jobId)}${tokenQuery()}`);
+      const job = res.job || {};
+      const tasks = res.tasks || [];
+
+      document.getElementById("drawerComputeType").textContent = job.type || "-";
+      const failure = tasks.find((t) => t.error)?.error || "None";
+      document.getElementById("drawerFailureReason").textContent = failure;
+
+      if (!tasks.length) {
+        document.getElementById("drawerTaskList").innerHTML = `<div class=\"text-xs text-secondary\">No task rows for this job.</div>`;
+      } else {
+        document.getElementById("drawerTaskList").innerHTML = tasks.map((t) => {
+          const s = String(t.status || "unknown").toLowerCase();
+          const statusClass = s === "failed" ? "bg-error text-on-error" : s === "completed" ? "bg-primary text-on-primary" : "bg-secondary-container text-secondary";
+          const logText = t.error ? `<span class=\"text-error font-bold\">[ERROR]</span> ${esc(t.error)}` : `<span class=\"text-primary-fixed font-bold\">[INFO]</span> ${esc(t.status || "updated")}`;
+          return `
+            <div class="p-4 bg-surface-container-lowest border border-outline-variant/10 rounded-xl space-y-3">
+              <div class="flex justify-between items-start">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-surface-container-high rounded-lg flex items-center justify-center">
+                    <span class="material-symbols-outlined text-sm text-secondary">dns</span>
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold mono">${esc(t.worker_id || "unassigned")}</p>
+                    <p class="text-[10px] font-label text-secondary">Attempts: ${esc(t.attempt || 0)} | Updated: ${esc(fmtTime(t.updated_at))}</p>
+                  </div>
+                </div>
+                <span class="px-2 py-0.5 rounded-md text-[9px] font-label font-bold uppercase ${statusClass}">${esc(t.status || "unknown")}</span>
+              </div>
+              <div class="p-3 bg-on-surface text-surface-container-high rounded-lg text-[10px] font-mono leading-relaxed">${logText}</div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      const logLines = tasks.slice(0, 30).map((t) => {
+        const err = t.error ? ` [ERROR] ${esc(t.error)}` : "";
+        return `<p class=\"opacity-80\">${esc(fmtTime(t.updated_at))} [${esc(String(t.status || "").toUpperCase())}] ${esc(t.id || "task")}${err}</p>`;
+      });
+      document.getElementById("drawerLogs").innerHTML = logLines.length
+        ? logLines.join("")
+        : `<p class=\"opacity-50\">No execution logs for this job.</p>`;
+    } catch (err) {
+      document.getElementById("drawerComputeType").textContent = "Failed to load";
+      document.getElementById("drawerFailureReason").textContent = err.message;
+      document.getElementById("drawerTaskList").innerHTML = `<div class=\"text-xs text-error\">${esc(err.message)}</div>`;
+      document.getElementById("drawerLogs").innerHTML = `<p class=\"text-error\">Unable to fetch logs.</p>`;
+    }
+  }
+
+  async function refreshCompute() {
+    const status = document.getElementById("computeApiStatus");
+    const badge = document.getElementById("clusterStatusBadge");
+    try {
+      const [jobsRes, workersRes] = await Promise.all([
+        apiGet(`/api/compute/jobs${tokenQuery()}`),
+        apiGet(`/api/compute/workers${tokenQuery()}`),
+      ]);
+      computeState.jobs = jobsRes.jobs || [];
+      computeState.workers = workersRes.workers || [];
+      status.textContent = `Connected | ${computeState.jobs.length} jobs | ${computeState.workers.length} workers`;
+      status.className = "text-[10px] font-label text-primary";
+      badge.textContent = "Status: Online";
+      badge.className = "text-[10px] font-label font-bold text-primary uppercase tracking-tighter";
+      renderMetrics();
+      renderJobs();
+      if (computeState.selectedJobId) {
+        loadJobDetails(computeState.selectedJobId);
+      }
+    } catch (err) {
+      computeState.jobs = [];
+      computeState.workers = [];
+      renderMetrics();
+      renderJobs();
+      status.textContent = `Compute unavailable: ${err.message}`;
+      status.className = "text-[10px] font-label text-error";
+      badge.textContent = "Status: Auth/Error";
+      badge.className = "text-[10px] font-label font-bold text-error uppercase tracking-tighter";
+    }
+  }
+
+  function bindComputeUI() {
+    const tokenInput = document.getElementById("computeToken");
+    tokenInput.value = localStorage.getItem("lantern_compute_token") || "";
+    const status = document.getElementById("computeApiStatus");
+
+    document.getElementById("refreshClusterBtn").addEventListener("click", refreshCompute);
+    document.getElementById("saveTokenBtn").addEventListener("click", async () => {
+      localStorage.setItem("lantern_compute_token", tokenInput.value.trim());
+      await refreshCompute();
+    });
+    document.getElementById("clearTokenBtn").addEventListener("click", async () => {
+      localStorage.removeItem("lantern_compute_token");
+      tokenInput.value = "";
+      await refreshCompute();
+    });
+    document.getElementById("closeDrawerBtn").addEventListener("click", closeDrawer);
+
+    document.getElementById("filterAllBtn").addEventListener("click", () => {
+      computeState.jobFilter = "all";
+      document.getElementById("filterAllBtn").className = "px-3 py-1.5 text-xs font-medium bg-surface-container-high text-on-surface rounded-lg transition-colors";
+      document.getElementById("filterRunningBtn").className = "px-3 py-1.5 text-xs font-medium bg-surface-container-low text-secondary rounded-lg hover:bg-surface-container-high transition-colors";
+      renderJobs();
+      status.textContent = "Showing all jobs";
+    });
+
+    document.getElementById("filterRunningBtn").addEventListener("click", () => {
+      computeState.jobFilter = "running";
+      document.getElementById("filterRunningBtn").className = "px-3 py-1.5 text-xs font-medium bg-surface-container-high text-on-surface rounded-lg transition-colors";
+      document.getElementById("filterAllBtn").className = "px-3 py-1.5 text-xs font-medium bg-surface-container-low text-secondary rounded-lg hover:bg-surface-container-high transition-colors";
+      renderJobs();
+      status.textContent = "Showing running jobs";
+    });
+
+    document.querySelectorAll('a[href="#"]').forEach((a) => {
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        status.textContent = `${a.textContent.trim()} view is a placeholder in this compute-focused page.`;
+      });
+    });
+
+    const requeueBtn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.includes("Re-queue Job"));
+    if (requeueBtn) {
+      requeueBtn.addEventListener("click", () => {
+        status.textContent = "Re-queue action is not implemented yet.";
+      });
+    }
+  }
+
+  async function initComputeDashboard() {
+    bindComputeUI();
+    await refreshCompute();
+    setInterval(refreshCompute, 8000);
+  }
+
+  initComputeDashboard();
+</script>
+</body></html>

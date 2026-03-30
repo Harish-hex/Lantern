@@ -54,6 +54,14 @@ func New(bridge *server.Bridge) *Server {
 	mux.HandleFunc("/api/files", ws.handleFiles)
 	mux.HandleFunc("/api/files/", ws.handleFileByID)
 	mux.HandleFunc("/api/stats", ws.handleStats)
+	mux.HandleFunc("/api/compute/templates", ws.handleComputeTemplates)
+	mux.HandleFunc("/api/compute/overview", ws.handleComputeOverview)
+	mux.HandleFunc("/api/compute/actions/requeue-stalled", ws.handleComputeActions)
+	mux.HandleFunc("/api/compute/jobs/preflight", ws.handleComputeJobPreflight)
+	mux.HandleFunc("/api/compute/jobs", ws.handleComputeJobs)
+	mux.HandleFunc("/api/compute/jobs/", ws.handleComputeJobByID)
+	mux.HandleFunc("/api/compute/workers", ws.handleComputeWorkers)
+	mux.HandleFunc("/api/compute/workers/", ws.handleComputeWorkerByID)
 	mux.HandleFunc("/api/upload", ws.handleUpload)
 	mux.HandleFunc("/ws/upload", ws.handleUploadWS)
 
@@ -94,6 +102,12 @@ func (ws *Server) Stop(ctx context.Context) error {
 
 func jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+func jsonStatus(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
 }
 
@@ -150,6 +164,349 @@ func (ws *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, ws.bridge.Stats())
+}
+
+func (ws *Server) computeTokenFromRequest(r *http.Request) string {
+	token := strings.TrimSpace(r.Header.Get("X-Lantern-Compute-Token"))
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("token"))
+	}
+	return token
+}
+
+func (ws *Server) requireComputeReadAuth(w http.ResponseWriter, r *http.Request) bool {
+	if !ws.bridge.ComputeEnabled() {
+		jsonErr(w, http.StatusServiceUnavailable, "compute coordinator disabled")
+		return false
+	}
+	token := ws.computeTokenFromRequest(r)
+	if !ws.bridge.ComputeReadTokenValid(token) {
+		jsonErr(w, http.StatusUnauthorized, "invalid compute token")
+		return false
+	}
+	return true
+}
+
+func (ws *Server) requireComputeWriteAuth(w http.ResponseWriter, r *http.Request) bool {
+	return ws.requireComputeReadAuth(w, r)
+}
+
+func (ws *Server) decodeJSONBody(r *http.Request, dest any) error {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(body)) == "" {
+		return nil
+	}
+	return json.Unmarshal(body, dest)
+}
+
+func (ws *Server) handleComputeTemplates(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+	jsonOK(w, map[string]any{"templates": ws.bridge.ComputeTemplates()})
+}
+
+func (ws *Server) handleComputeOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+	overview := ws.bridge.ComputeOverview(time.Now())
+	if overview == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "compute coordinator unavailable")
+		return
+	}
+	jsonOK(w, overview)
+}
+
+func (ws *Server) handleComputeJobPreflight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeWriteAuth(w, r) {
+		return
+	}
+
+	var body struct {
+		Type     string            `json:"type"`
+		Template string            `json:"template"`
+		Inputs   json.RawMessage   `json:"inputs"`
+		Settings json.RawMessage   `json:"settings"`
+		Tasks    []json.RawMessage `json:"tasks"`
+	}
+	if err := ws.decodeJSONBody(r, &body); err != nil {
+		jsonErr(w, http.StatusBadRequest, "invalid preflight request")
+		return
+	}
+
+	preview, err := ws.bridge.PreviewComputeJob(server.ComputeJobSubmit{
+		Type:     body.Type,
+		Template: body.Template,
+		Inputs:   body.Inputs,
+		Settings: body.Settings,
+		Tasks:    body.Tasks,
+	}, time.Now())
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if preview == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "compute coordinator unavailable")
+		return
+	}
+
+	jsonOK(w, preview)
+}
+
+func (ws *Server) handleComputeJobs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		if !ws.requireComputeReadAuth(w, r) {
+			return
+		}
+
+		jobs := ws.bridge.ComputeJobs()
+		out := make([]map[string]any, 0, len(jobs))
+		for _, job := range jobs {
+			if job == nil {
+				continue
+			}
+			progress := 0.0
+			if job.TotalTasks > 0 {
+				progress = float64(job.CompletedTasks+job.FailedTasks) * 100 / float64(job.TotalTasks)
+			}
+			out = append(out, map[string]any{
+				"id":                     job.ID,
+				"type":                   job.Type,
+				"template_id":            job.TemplateID,
+				"template_name":          job.TemplateName,
+				"output_kind":            job.OutputKind,
+				"status":                 job.Status,
+				"confidence":             job.Confidence,
+				"needs_attention_reason": job.NeedsAttentionReason,
+				"failure_category":       job.FailureCategory,
+				"created_at":             job.CreatedAt,
+				"updated_at":             job.UpdatedAt,
+				"started_at":             job.StartedAt,
+				"finished_at":            job.FinishedAt,
+				"total_tasks":            job.TotalTasks,
+				"completed_tasks":        job.CompletedTasks,
+				"failed_tasks":           job.FailedTasks,
+				"retrying_tasks":         job.RetryingTasks,
+				"artifact_count":         len(job.Artifacts),
+				"progress_pct":           progress,
+			})
+		}
+
+		jsonOK(w, map[string]any{"jobs": out})
+	case http.MethodPost:
+		if !ws.requireComputeWriteAuth(w, r) {
+			return
+		}
+
+		var body struct {
+			JobID    string            `json:"job_id"`
+			Type     string            `json:"type"`
+			Template string            `json:"template"`
+			Inputs   json.RawMessage   `json:"inputs"`
+			Settings json.RawMessage   `json:"settings"`
+			Tasks    []json.RawMessage `json:"tasks"`
+		}
+		if err := ws.decodeJSONBody(r, &body); err != nil {
+			jsonErr(w, http.StatusBadRequest, "invalid job request")
+			return
+		}
+
+		job, acceptedTasks, err := ws.bridge.SubmitComputeJob(body.JobID, server.ComputeJobSubmit{
+			Type:     body.Type,
+			Template: body.Template,
+			Inputs:   body.Inputs,
+			Settings: body.Settings,
+			Tasks:    body.Tasks,
+		}, time.Now())
+		if err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		jsonStatus(w, http.StatusCreated, map[string]any{
+			"job":            job,
+			"accepted_tasks": acceptedTasks,
+		})
+	default:
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (ws *Server) handleComputeJobByID(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/compute/jobs/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		jsonErr(w, http.StatusBadRequest, "missing job id")
+		return
+	}
+	jobID := parts[0]
+
+	if len(parts) == 1 && r.Method == http.MethodGet {
+		if !ws.requireComputeReadAuth(w, r) {
+			return
+		}
+
+		job, tasks, ok := ws.bridge.ComputeJobState(jobID)
+		if !ok || job == nil {
+			jsonErr(w, http.StatusNotFound, "job not found")
+			return
+		}
+
+		jsonOK(w, map[string]any{
+			"job":   job,
+			"tasks": tasks,
+		})
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "retry" && r.Method == http.MethodPost {
+		if !ws.requireComputeWriteAuth(w, r) {
+			return
+		}
+
+		job, err := ws.bridge.RetryComputeJob(jobID, time.Now())
+		if err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		jsonOK(w, map[string]any{
+			"job":     job,
+			"message": "job requeued for execution",
+		})
+		return
+	}
+
+	jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+func (ws *Server) handleComputeWorkers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	now := time.Now()
+	workers := ws.bridge.ComputeWorkers()
+	out := make([]map[string]any, 0, len(workers))
+	for _, worker := range workers {
+		if worker == nil {
+			continue
+		}
+		freshness := "healthy"
+		age := now.Sub(worker.LastSeen)
+		if age > 2*ws.bridge.Cfg().ComputeHeartbeat {
+			freshness = "warning"
+		}
+		if age > ws.bridge.Cfg().ComputeLeaseTTL {
+			freshness = "stale"
+		}
+
+		flakiness := "stable"
+		if worker.Disabled {
+			flakiness = "disabled"
+		} else if worker.ReliabilityScore < 90 || worker.StaleReassignments > 0 {
+			flakiness = "warning"
+		}
+
+		out = append(out, map[string]any{
+			"id":                  worker.ID,
+			"status":              worker.Status,
+			"last_seen":           worker.LastSeen,
+			"lease_until":         worker.LeaseUntil,
+			"capabilities":        worker.Capabilities,
+			"completed_tasks":     worker.CompletedTasks,
+			"failed_tasks":        worker.FailedTasks,
+			"stale_reassignments": worker.StaleReassignments,
+			"reliability_score":   worker.ReliabilityScore,
+			"disabled":            worker.Disabled,
+			"disabled_reason":     worker.DisabledReason,
+			"freshness":           freshness,
+			"flakiness":           flakiness,
+		})
+	}
+
+	jsonOK(w, map[string]any{"workers": out})
+}
+
+func (ws *Server) handleComputeWorkerByID(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/compute/workers/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		jsonErr(w, http.StatusBadRequest, "missing worker action")
+		return
+	}
+	if r.Method != http.MethodPost {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeWriteAuth(w, r) {
+		return
+	}
+
+	action := parts[1]
+	if action != "disable" && action != "enable" {
+		jsonErr(w, http.StatusNotFound, "unknown worker action")
+		return
+	}
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := ws.decodeJSONBody(r, &body); err != nil {
+		jsonErr(w, http.StatusBadRequest, "invalid worker action request")
+		return
+	}
+
+	worker, err := ws.bridge.SetComputeWorkerDisabled(parts[0], action == "disable", body.Reason, time.Now())
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	jsonOK(w, map[string]any{
+		"worker":  worker,
+		"message": fmt.Sprintf("worker %s %sd", parts[0], action),
+	})
+}
+
+func (ws *Server) handleComputeActions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeWriteAuth(w, r) {
+		return
+	}
+	taskIDs, err := ws.bridge.RequeueStalledComputeTasks(time.Now())
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	jsonOK(w, map[string]any{
+		"task_ids": taskIDs,
+		"message":  fmt.Sprintf("processed %d stalled task(s)", len(taskIDs)),
+	})
 }
 
 // ── /api/files/{id} ──────────────────────────────────────────────────────────

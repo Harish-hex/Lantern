@@ -67,6 +67,7 @@ func (s *Server) Bridge() *Bridge {
 		upload:  s.upload,
 		cfg:     s.cfg,
 		stats:   s.stats,
+		compute: s.compute,
 	}
 }
 
