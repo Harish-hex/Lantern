@@ -393,7 +393,310 @@ header .badge {
   .dropzone { padding: 2rem 1rem; }
   .file-item { flex-wrap: wrap; }
   .file-actions { width: 100%; justify-content: flex-end; margin-top: 0.5rem; }
+  .tab-bar { gap: 0; }
+  .tab-btn { font-size: 0.7rem; padding: 0.5rem 0.6rem; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .wizard-body { padding: 1.5rem; }
 }
+
+/* ── Tab Navigation ──────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.tab-btn.active {
+  color: var(--accent);
+  background: rgba(245,158,11,0.1);
+  box-shadow: 0 1px 4px rgba(245,158,11,0.15);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; animation: fadeInUp 0.25s ease; }
+
+/* ── Stat Cards ──────────────────────────────────────────── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.stat-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.stat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-bottom: 0.3rem;
+}
+.stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* ── Status Pill ─────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pill-queued    { background: rgba(96,165,250,0.15); color: var(--blue); }
+.pill-running   { background: rgba(245,158,11,0.15); color: var(--accent); }
+.pill-retrying  { background: rgba(251,146,60,0.15); color: var(--accent-2); }
+.pill-assembling{ background: rgba(167,139,250,0.15); color: #a78bfa; }
+.pill-done      { background: rgba(52,211,153,0.15); color: var(--green); }
+.pill-needs_attention,.pill-failed { background: rgba(248,113,113,0.15); color: var(--red); }
+.pill-idle     { background: rgba(122,133,153,0.15); color: var(--text-dim); }
+.pill-active   { background: rgba(52,211,153,0.15); color: var(--green); }
+.pill-quarantined { background: rgba(248,113,113,0.15); color: var(--red); }
+.pill-disabled { background: rgba(122,133,153,0.15); color: var(--text-dim); }
+
+/* ── Progress Bar ────────────────────────────────────────── */
+.pbar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+.pbar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.pbar-fill.done { background: linear-gradient(90deg, #34d399, #10b981); }
+
+/* ── Job / Worker Rows ───────────────────────────────────── */
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: var(--radius-sm);
+}
+.row-item:hover { background: var(--glass-hi); }
+.row-item:last-child { border-bottom: none; }
+.row-icon { font-size: 1.3rem; flex-shrink: 0; width: 36px; text-align: center; }
+.row-body { flex: 1; min-width: 0; }
+.row-title { font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.row-detail { padding: 0 0.5rem 1rem; animation: fadeInUp 0.2s ease; }
+.row-detail-table { width: 100%; font-size: 0.78rem; border-collapse: collapse; }
+.row-detail-table th { text-align: left; color: var(--text-dim); font-weight: 600; padding: 0.4rem 0.5rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.row-detail-table td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--border); }
+
+/* ── Failure Buckets bar chart ────────────────────────────── */
+.bucket-chart { display: flex; flex-direction: column; gap: 0.5rem; }
+.bucket-row { display: flex; align-items: center; gap: 0.75rem; }
+.bucket-label { font-size: 0.72rem; width: 160px; text-align: right; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bucket-bar-wrap { flex: 1; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+.bucket-bar { height: 100%; border-radius: 4px; background: var(--red); transition: width 0.3s; }
+.bucket-val { font-size: 0.72rem; color: var(--text-dim); width: 30px; font-variant-numeric: tabular-nums; }
+
+/* ── Wizard Modal ────────────────────────────────────────── */
+.wizard-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+}
+.wizard-overlay.open { display: flex; }
+.wizard-box {
+  background: var(--bg);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  width: 560px;
+  max-width: 95vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.wizard-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.wizard-header h2 { font-size: 1.05rem; font-weight: 700; flex: 1; }
+.wizard-close {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 1.2rem; cursor: pointer; padding: 4px;
+  transition: color 0.15s;
+}
+.wizard-close:hover { color: var(--text); }
+.wizard-body { padding: 1.5rem; }
+.wizard-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.wizard-steps {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.wizard-step {
+  flex: 1;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 0.5rem;
+  border-bottom: 2px solid var(--border);
+  transition: all 0.2s;
+}
+.wizard-step.active { color: var(--accent); border-color: var(--accent); }
+.wizard-step.done   { color: var(--green); border-color: var(--green); }
+
+/* ── Template Picker Cards ───────────────────────────────── */
+.tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.tpl-card {
+  background: var(--glass);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tpl-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+.tpl-card.selected { border-color: var(--accent); background: rgba(245,158,11,0.06); }
+.tpl-card .tpl-icon { font-size: 1.8rem; margin-bottom: 0.5rem; display: block; }
+.tpl-card .tpl-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 0.25rem; }
+.tpl-card .tpl-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.4; }
+
+/* ── Form Fields ─────────────────────────────────────────── */
+.form-group { margin-bottom: 1rem; }
+.form-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-help { font-size: 0.68rem; color: var(--text-dim); margin-top: 0.2rem; opacity: 0.7; }
+.form-input, .form-textarea, .form-select {
+  width: 100%;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.85rem;
+  padding: 0.55rem 0.75rem;
+  transition: border-color 0.2s;
+}
+.form-input:focus, .form-textarea:focus, .form-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-select { appearance: none; cursor: pointer; }
+.form-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 1.25rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+.form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.form-toggle input[type="checkbox"] {
+  appearance: none; width: 36px; height: 20px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.form-toggle input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  top: 2px; left: 2px;
+  transition: all 0.2s;
+}
+.form-toggle input[type="checkbox"]:checked { background: rgba(245,158,11,0.4); }
+.form-toggle input[type="checkbox"]:checked::after { left: 18px; background: var(--accent); }
+
+/* ── Preflight Checks ────────────────────────────────────── */
+.preflight-list { list-style: none; }
+.preflight-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.preflight-item:last-child { border-bottom: none; }
+.preflight-icon { font-size: 1rem; width: 24px; text-align: center; flex-shrink: 0; }
+.preflight-msg { flex: 1; }
+.confidence-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.78rem; font-weight: 700;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  margin-top: 1rem;
+}
+.confidence-high   { background: rgba(52,211,153,0.15); color: var(--green); }
+.confidence-medium { background: rgba(245,158,11,0.15); color: var(--accent); }
+.confidence-low    { background: rgba(248,113,113,0.15); color: var(--red); }
+
+/* ── Reliability Bar ─────────────────────────────────────── */
+.rel-bar { width: 60px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.rel-fill { height: 100%; border-radius: 3px; }
+.rel-high   .rel-fill { background: var(--green); }
+.rel-medium .rel-fill { background: var(--accent); }
+.rel-low    .rel-fill { background: var(--red); }
 </style>
 </head>
 <body>
@@ -408,32 +711,109 @@ header .badge {
     <div class="connection-dot disconnected" id="connDot" title="SSE connection"></div>
   </header>
 
-  <!-- Upload Card -->
-  <div class="card">
-    <div class="card-title"><span class="icon">⬆</span> Upload</div>
-    <div class="dropzone" id="dropzone">
-      <span class="dz-icon">📁</span>
-      <div class="dz-text">
-        <strong>Drop files here</strong> or click to browse
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="files">📁 Files</button>
+    <button class="tab-btn" data-tab="jobs">⚡ Jobs</button>
+    <button class="tab-btn" data-tab="workers">🖥 Workers</button>
+    <button class="tab-btn" data-tab="overview">📊 Overview</button>
+  </div>
+
+  <!-- ═══════════ FILES TAB ═══════════ -->
+  <div class="tab-panel active" id="tab-files">
+    <div class="card">
+      <div class="card-title"><span class="icon">⬆</span> Upload</div>
+      <div class="dropzone" id="dropzone">
+        <span class="dz-icon">📁</span>
+        <div class="dz-text"><strong>Drop files here</strong> or click to browse</div>
+        <input type="file" id="fileInput" multiple>
       </div>
-      <input type="file" id="fileInput" multiple>
+      <div class="upload-progress" id="uploadProgress"></div>
     </div>
-    <div class="upload-progress" id="uploadProgress"></div>
-  </div>
-
-  <!-- File List Card -->
-  <div class="card">
-    <div class="card-title">
-      <span class="icon">📂</span> Files
-      <span id="fileCount" style="margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-dim)"></span>
-    </div>
-    <ul class="file-list" id="fileList"></ul>
-    <div class="empty-state" id="emptyState">
-      <span class="es-icon">✨</span>
-      <p>No files yet. Upload something to get started.</p>
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">📂</span> Files
+        <span id="fileCount" style="margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-dim)"></span>
+      </div>
+      <ul class="file-list" id="fileList"></ul>
+      <div class="empty-state" id="emptyState">
+        <span class="es-icon">✨</span>
+        <p>No files yet. Upload something to get started.</p>
+      </div>
     </div>
   </div>
 
+  <!-- ═══════════ JOBS TAB ═══════════ -->
+  <div class="tab-panel" id="tab-jobs">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="card-title" style="margin-bottom:0"><span class="icon">⚡</span> Compute Jobs</div>
+      <button class="btn btn-accent" id="btnNewJob">✚ New Job</button>
+    </div>
+    <div class="card" id="jobListCard">
+      <div id="jobList"></div>
+      <div class="empty-state" id="jobsEmpty">
+        <span class="es-icon">⚡</span>
+        <p>No compute jobs yet. Create one to get started.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ WORKERS TAB ═══════════ -->
+  <div class="tab-panel" id="tab-workers">
+    <div class="card-title"><span class="icon">🖥</span> Connected Workers</div>
+    <div class="card" id="workerListCard">
+      <div id="workerList"></div>
+      <div class="empty-state" id="workersEmpty">
+        <span class="es-icon">🖥</span>
+        <p>No workers connected. Start a worker with <code>lantern --worker</code></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ OVERVIEW TAB ═══════════ -->
+  <div class="tab-panel" id="tab-overview">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="card-title" style="margin-bottom:0"><span class="icon">📊</span> Compute Overview</div>
+      <button class="btn btn-accent" id="btnRequeueStalled">🔄 Requeue Stalled</button>
+    </div>
+    <div class="stat-grid" id="overviewStats"></div>
+    <div class="card">
+      <div class="card-title"><span class="icon">🔥</span> Failure Taxonomy</div>
+      <div class="bucket-chart" id="failureBuckets"></div>
+      <div class="empty-state" id="bucketsEmpty" style="display:none">
+        <span class="es-icon">✅</span>
+        <p>No failures recorded.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <div class="card-title"><span class="icon">📋</span> Per-Template Metrics</div>
+      <div id="templateMetrics"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ NEW JOB WIZARD ═══════════ -->
+<div class="wizard-overlay" id="wizardOverlay">
+  <div class="wizard-box">
+    <div class="wizard-header">
+      <span>✚</span>
+      <h2 id="wizardTitle">New Compute Job</h2>
+      <button class="wizard-close" id="wizardClose">✕</button>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-steps">
+        <div class="wizard-step active" data-step="1">1 · Template</div>
+        <div class="wizard-step" data-step="2">2 · Configure</div>
+        <div class="wizard-step" data-step="3">3 · Review</div>
+      </div>
+      <div id="wizardContent"></div>
+    </div>
+    <div class="wizard-footer">
+      <button class="btn" id="wizardBack" style="display:none">← Back</button>
+      <button class="btn btn-accent" id="wizardNext">Next →</button>
+    </div>
+  </div>
 </div>
 
 <!-- Toasts -->
@@ -452,6 +832,44 @@ header .badge {
   const emptyState     = document.getElementById('emptyState');
   const toasts         = document.getElementById('toasts');
   const connDot        = document.getElementById('connDot');
+
+  // Compute DOM refs
+  const jobListEl      = document.getElementById('jobList');
+  const jobsEmpty      = document.getElementById('jobsEmpty');
+  const workerListEl   = document.getElementById('workerList');
+  const workersEmpty   = document.getElementById('workersEmpty');
+  const overviewStats  = document.getElementById('overviewStats');
+  const failureBuckets = document.getElementById('failureBuckets');
+  const bucketsEmpty   = document.getElementById('bucketsEmpty');
+  const templateMetrics= document.getElementById('templateMetrics');
+  const wizardOverlay  = document.getElementById('wizardOverlay');
+  const wizardContent  = document.getElementById('wizardContent');
+  const wizardBack     = document.getElementById('wizardBack');
+  const wizardNext     = document.getElementById('wizardNext');
+  const wizardClose    = document.getElementById('wizardClose');
+  const wizardSteps    = document.querySelectorAll('.wizard-step');
+
+  // ── Tab switching ──────────────────────────────────────────
+  let activeTab = 'files';
+  let computePollTimer = null;
+
+  document.querySelector('.tab-bar').addEventListener('click', e => {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+    onTabChanged(tab);
+  });
+
+  function onTabChanged(tab) {
+    if (computePollTimer) { clearInterval(computePollTimer); computePollTimer = null; }
+    if (tab === 'jobs') { fetchJobs(); computePollTimer = setInterval(fetchJobs, 3000); }
+    else if (tab === 'workers') { fetchWorkers(); computePollTimer = setInterval(fetchWorkers, 3000); }
+    else if (tab === 'overview') { fetchOverview(); computePollTimer = setInterval(fetchOverview, 5000); }
+  }
 
   // ── State ───────────────────────────────────────────────────
   let files = [];
@@ -911,6 +1329,418 @@ header .badge {
       es.close();
       setTimeout(connectSSE, 3000);
     });
+  }
+
+  // ── Compute: Jobs ───────────────────────────────────────────
+
+  let expandedJobId = null;
+
+  async function fetchJobs() {
+    try {
+      const res = await fetch('/api/compute/jobs');
+      if (!res.ok) return;
+      const data = await res.json();
+      const jobs = data.jobs || [];
+      jobsEmpty.style.display = jobs.length ? 'none' : 'block';
+      renderJobs(jobs);
+    } catch (_) {}
+  }
+
+  function jobStatusPill(s) {
+    const label = (s || 'unknown').replace(/_/g, ' ');
+    return `<span class="pill pill-${(s||'').toLowerCase()}">${label}</span>`;
+  }
+
+  function jobProgress(j) {
+    const total = j.total_tasks || 1;
+    const done = j.completed_tasks || 0;
+    const pct = Math.round((done / total) * 100);
+    const cls = j.status === 'done' ? 'done' : '';
+    return `<div class="pbar" style="width:120px"><div class="pbar-fill ${cls}" style="width:${pct}%"></div></div> <span style="font-size:0.72rem;color:var(--text-dim);margin-left:4px">${pct}%</span>`;
+  }
+
+  function renderJobs(jobs) {
+    jobListEl.innerHTML = '';
+    jobs.forEach(j => {
+      const row = document.createElement('div');
+      const tplIcon = j.template_icon || '⚡';
+      row.className = 'row-item';
+      row.innerHTML = `
+        <div class="row-icon">${tplIcon}</div>
+        <div class="row-body">
+          <div class="row-title">${j.template_name || j.template_id || 'Job'} <span style="font-weight:400;color:var(--text-dim);font-size:0.72rem">${(j.id||'').slice(0,8)}</span></div>
+          <div class="row-sub">
+            ${jobStatusPill(j.status)}
+            <span>${j.completed_tasks||0}/${j.total_tasks||0} tasks</span>
+            ${jobProgress(j)}
+          </div>
+        </div>
+        <div class="row-actions">
+          ${j.status === 'needs_attention' ? '<button class="btn btn-accent" data-action="retry-job" data-id="'+j.id+'">🔄 Retry</button>' : ''}
+        </div>
+      `;
+      row.addEventListener('click', e => {
+        if (e.target.closest('[data-action]')) return;
+        expandedJobId = expandedJobId === j.id ? null : j.id;
+        if (expandedJobId === j.id) fetchJobDetail(j.id);
+        else { const d = row.nextElementSibling; if (d && d.classList.contains('row-detail')) d.remove(); }
+      });
+      jobListEl.appendChild(row);
+      if (expandedJobId === j.id) fetchJobDetail(j.id);
+    });
+  }
+
+  async function fetchJobDetail(id) {
+    try {
+      const res = await fetch('/api/compute/jobs/' + id);
+      if (!res.ok) return;
+      const j = await res.json();
+      renderJobDetail(id, j);
+    } catch (_) {}
+  }
+
+  function renderJobDetail(id, j) {
+    document.querySelectorAll('.row-detail').forEach(d => d.remove());
+    const items = document.querySelectorAll('.row-item');
+    for (const item of items) {
+      if (!item.querySelector(`[data-id="${id}"]`) && !item.innerHTML.includes(id.slice(0,8))) continue;
+      const detail = document.createElement('div');
+      detail.className = 'row-detail';
+      const tasks = j.tasks || [];
+      const artifactsHTML = (j.artifacts && j.artifacts.length > 0) ? `
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+          <strong style="color:var(--text);font-size:0.8rem;display:block;margin-bottom:8px">Artifacts:</strong>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            ${j.artifacts.map(a => `<a class="btn btn-primary" href="/api/files/${a.id}" download="${a.name}" style="text-decoration:none;font-size:0.75rem;"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download ${a.name}</a>`).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      detail.innerHTML = `
+        <table class="row-detail-table">
+          <thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Attempt</th><th>Error</th></tr></thead>
+          <tbody>${tasks.map(t => `
+            <tr>
+              <td>${(t.id||'').slice(0,8)}</td>
+              <td>${jobStatusPill(t.status)}</td>
+              <td>${t.worker_id ? t.worker_id.slice(0,8) : '—'}</td>
+              <td>${t.attempt || 0}</td>
+              <td style="color:var(--red);font-size:0.72rem">${t.error || ''}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table>
+        ${artifactsHTML}
+      `;
+      item.after(detail);
+      break;
+    }
+  }
+
+  // ── Compute: Workers ──────────────────────────────────────
+
+  async function fetchWorkers() {
+    try {
+      const res = await fetch('/api/compute/workers');
+      if (!res.ok) return;
+      const data = await res.json();
+      const workers = data.workers || [];
+      workersEmpty.style.display = workers.length ? 'none' : 'block';
+      renderWorkers(workers);
+    } catch (_) {}
+  }
+
+  function reliabilityBar(score) {
+    const pct = Math.round((score || 0) * 100);
+    const cls = pct >= 80 ? 'rel-high' : pct >= 50 ? 'rel-medium' : 'rel-low';
+    return `<span class="rel-bar ${cls}"><span class="rel-fill" style="width:${pct}%"></span></span> <span style="font-size:0.68rem;color:var(--text-dim)">${pct}%</span>`;
+  }
+
+  function renderWorkers(workers) {
+    workerListEl.innerHTML = '';
+    workers.forEach(w => {
+      const row = document.createElement('div');
+      row.className = 'row-item';
+      const status = w.quarantined ? 'quarantined' : w.disabled ? 'disabled' : w.status || 'idle';
+      const caps = (w.capabilities || []).join(', ') || 'none';
+      row.innerHTML = `
+        <div class="row-icon">🖥</div>
+        <div class="row-body">
+          <div class="row-title">${w.id ? w.id.slice(0,12) : 'worker'} ${jobStatusPill(status)}</div>
+          <div class="row-sub">
+            <span>Caps: ${caps}</span>
+            <span>Tasks: ${w.completed_tasks || 0}</span>
+            <span>${reliabilityBar(w.reliability_score)}</span>
+          </div>
+        </div>
+        <div class="row-actions">
+          ${w.disabled
+            ? '<button class="btn btn-accent" data-action="enable-worker" data-id="'+w.id+'">✓ Enable</button>'
+            : '<button class="btn btn-danger" data-action="disable-worker" data-id="'+w.id+'">✕ Disable</button>'
+          }
+        </div>
+      `;
+      workerListEl.appendChild(row);
+    });
+  }
+
+  // ── Compute: Overview ─────────────────────────────────────
+
+  async function fetchOverview() {
+    try {
+      const res = await fetch('/api/compute/overview');
+      if (!res.ok) return;
+      const ov = await res.json();
+      renderOverview(ov);
+    } catch (_) {}
+  }
+
+  function renderOverview(ov) {
+    const rate = Math.round((ov.global_completion_rate || 0) * 100);
+    overviewStats.innerHTML = `
+      <div class="stat-card"><div class="stat-value" style="color:var(--accent)">${ov.active_jobs||0}</div><div class="stat-label">Active Jobs</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--green)">${ov.completed_jobs||0}</div><div class="stat-label">Completed</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--red)">${ov.needs_attention_jobs||0}</div><div class="stat-label">Needs Attention</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${rate}%</div><div class="stat-label">Completion Rate</div></div>
+    `;
+    const buckets = ov.failure_buckets || {};
+    const bucketKeys = Object.keys(buckets);
+    const maxB = Math.max(1, ...Object.values(buckets));
+    if (bucketKeys.length === 0) {
+      failureBuckets.innerHTML = '';
+      bucketsEmpty.style.display = 'block';
+    } else {
+      bucketsEmpty.style.display = 'none';
+      failureBuckets.innerHTML = bucketKeys.map(k => {
+        const pct = Math.round((buckets[k] / maxB) * 100);
+        return `<div class="bucket-row"><span class="bucket-label">${k.replace(/_/g,' ')}</span><div class="bucket-bar-wrap"><div class="bucket-bar" style="width:${pct}%"></div></div><span class="bucket-val">${buckets[k]}</span></div>`;
+      }).join('');
+    }
+    const metrics = ov.template_metrics || [];
+    if (metrics.length) {
+      templateMetrics.innerHTML = metrics.map(m => {
+        const cr = Math.round((m.completion_rate||0)*100);
+        return `<div class="row-item" style="cursor:default"><div class="row-icon">${m.template_icon||'📋'}</div><div class="row-body"><div class="row-title">${m.template_name}</div><div class="row-sub"><span>Started: ${m.started_jobs}</span><span>Done: ${m.completed_jobs}</span><span>Rate: ${cr}%</span></div></div></div>`;
+      }).join('');
+    } else {
+      templateMetrics.innerHTML = '<div class="empty-state"><p>No template data yet.</p></div>';
+    }
+  }
+
+  // ── Compute: Actions ──────────────────────────────────────
+
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+    try {
+      if (action === 'retry-job') {
+        const res = await fetch('/api/compute/jobs/' + id + '/retry', { method: 'POST' });
+        toast(res.ok ? '✅' : '❌', res.ok ? 'Job retried' : 'Retry failed');
+        if (res.ok) fetchJobs();
+      } else if (action === 'disable-worker') {
+        const res = await fetch('/api/compute/workers/' + id + '/disable', { method: 'POST' });
+        toast(res.ok ? '✅' : '❌', res.ok ? 'Worker disabled' : 'Disable failed');
+        if (res.ok) fetchWorkers();
+      } else if (action === 'enable-worker') {
+        const res = await fetch('/api/compute/workers/' + id + '/enable', { method: 'POST' });
+        toast(res.ok ? '✅' : '❌', res.ok ? 'Worker enabled' : 'Enable failed');
+        if (res.ok) fetchWorkers();
+      }
+    } catch (_) { toast('❌', 'Action failed'); }
+  });
+
+  document.getElementById('btnRequeueStalled').addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/compute/actions/requeue-stalled', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      toast(res.ok ? '✅' : '❌', res.ok ? `Requeued ${data.requeued||0} tasks` : 'Requeue failed');
+    } catch (_) { toast('❌', 'Requeue failed'); }
+  });
+
+  // ── Wizard: New Job ───────────────────────────────────────
+
+  let wizStep = 1;
+  let wizTemplates = [];
+  let wizSelected = null;
+  let wizFormData = {};
+
+  document.getElementById('btnNewJob').addEventListener('click', async () => {
+    wizStep = 1; wizSelected = null; wizFormData = {};
+    wizardOverlay.classList.add('open');
+    try {
+      const res = await fetch('/api/compute/templates');
+      const data = await res.json();
+      wizTemplates = data.templates || [];
+    } catch (_) { wizTemplates = []; }
+    renderWizard();
+  });
+
+  wizardClose.addEventListener('click', () => wizardOverlay.classList.remove('open'));
+  wizardOverlay.addEventListener('click', e => { if (e.target === wizardOverlay) wizardOverlay.classList.remove('open'); });
+
+  wizardBack.addEventListener('click', () => { if (wizStep > 1) { wizStep--; renderWizard(); } });
+
+  wizardNext.addEventListener('click', async () => {
+    if (wizStep === 1) {
+      if (!wizSelected) { toast('⚠️', 'Select a template'); return; }
+      wizStep = 2; renderWizard();
+    } else if (wizStep === 2) {
+      collectFormData();
+      wizStep = 3; renderWizard();
+      runPreflight();
+    } else if (wizStep === 3) {
+      await submitJob();
+    }
+  });
+
+  function renderWizard() {
+    wizardSteps.forEach(s => {
+      const n = parseInt(s.dataset.step);
+      s.classList.toggle('active', n === wizStep);
+      s.classList.toggle('done', n < wizStep);
+    });
+    wizardBack.style.display = wizStep > 1 ? '' : 'none';
+    wizardNext.textContent = wizStep === 3 ? '🚀 Submit Job' : 'Next →';
+
+    if (wizStep === 1) renderStep1();
+    else if (wizStep === 2) renderStep2();
+    else if (wizStep === 3) renderStep3();
+  }
+
+  function renderStep1() {
+    wizardContent.innerHTML = '<div class="tpl-grid">' + wizTemplates.map(t => `
+      <div class="tpl-card ${wizSelected === t.id ? 'selected' : ''}" data-tpl-id="${t.id}">
+        <span class="tpl-icon">${t.icon || '📋'}</span>
+        <div class="tpl-name">${t.name}</div>
+        <div class="tpl-desc">${t.best_for}</div>
+      </div>
+    `).join('') + '</div>';
+
+    wizardContent.querySelectorAll('.tpl-card').forEach(card => {
+      card.addEventListener('click', () => {
+        wizSelected = card.dataset.tplId;
+        wizardContent.querySelectorAll('.tpl-card').forEach(c => c.classList.toggle('selected', c.dataset.tplId === wizSelected));
+      });
+    });
+  }
+
+  function renderStep2() {
+    const tpl = wizTemplates.find(t => t.id === wizSelected);
+    if (!tpl || !tpl.schema) { wizardContent.innerHTML = '<p>No schema available.</p>'; return; }
+
+    const inputFields = tpl.schema.filter(f => f.section === 'inputs');
+    const settingFields = tpl.schema.filter(f => f.section === 'settings');
+
+    let html = '<div class="form-section-title">Inputs</div>';
+    html += inputFields.map(f => renderField(f)).join('');
+    if (settingFields.length) {
+      html += '<div class="form-section-title">Settings</div>';
+      html += settingFields.map(f => renderField(f)).join('');
+    }
+    wizardContent.innerHTML = html;
+  }
+
+  function renderField(f) {
+    const val = wizFormData[f.name] !== undefined ? wizFormData[f.name] : (f.default !== undefined ? f.default : '');
+    let input = '';
+    if (f.type === 'bool') {
+      input = `<label class="form-toggle"><input type="checkbox" data-field="${f.name}" ${val ? 'checked' : ''}><span>${f.label}</span></label>`;
+    } else if (f.type === 'select' && f.options) {
+      input = `<select class="form-select" data-field="${f.name}">${f.options.map(o => `<option value="${o}" ${o===String(val)?'selected':''}>${o}</option>`).join('')}</select>`;
+    } else if (f.type === 'string[]') {
+      const lines = Array.isArray(val) ? val.join('\n') : String(val);
+      input = `<textarea class="form-textarea" data-field="${f.name}" placeholder="${f.help||''}">${lines}</textarea>`;
+    } else if (f.type === 'int') {
+      input = `<input type="number" class="form-input" data-field="${f.name}" value="${val}">`;
+    } else {
+      input = `<input type="text" class="form-input" data-field="${f.name}" value="${val}">`;
+    }
+    const req = f.required ? ' *' : '';
+    return `<div class="form-group"><label class="form-label">${f.label}${req}</label>${input}${f.help ? '<div class="form-help">'+f.help+'</div>' : ''}</div>`;
+  }
+
+  function collectFormData() {
+    const tpl = wizTemplates.find(t => t.id === wizSelected);
+    if (!tpl) return;
+    wizFormData = {};
+    wizardContent.querySelectorAll('[data-field]').forEach(el => {
+      const f = tpl.schema.find(s => s.name === el.dataset.field);
+      if (!f) return;
+      if (f.type === 'bool') wizFormData[f.name] = el.checked;
+      else if (f.type === 'int') wizFormData[f.name] = parseInt(el.value) || 0;
+      else if (f.type === 'string[]') wizFormData[f.name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      else wizFormData[f.name] = el.value;
+    });
+  }
+
+  function renderStep3() {
+    wizardContent.innerHTML = '<div id="preflightResults"><div class="empty-state"><span class="es-icon">⏳</span><p>Running preflight checks…</p></div></div>';
+  }
+
+  async function runPreflight() {
+    const tpl = wizTemplates.find(t => t.id === wizSelected);
+    const inputs = {}, settings = {};
+    (tpl.schema || []).forEach(f => {
+      if (wizFormData[f.name] !== undefined) {
+        if (f.section === 'inputs') inputs[f.name] = wizFormData[f.name];
+        else settings[f.name] = wizFormData[f.name];
+      }
+    });
+    try {
+      const res = await fetch('/api/compute/jobs/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: wizSelected, inputs, settings })
+      });
+      const data = await res.json();
+      const checks = data.checks || [];
+      const allPass = checks.every(c => c.status === 'pass');
+      const anyFail = checks.some(c => c.status === 'fail');
+      const confidence = anyFail ? 'low' : allPass ? 'high' : 'medium';
+      const confLabel = confidence === 'high' ? '✅ High Confidence' : confidence === 'medium' ? '⚠️ Medium Confidence' : '❌ Low Confidence';
+
+      document.getElementById('preflightResults').innerHTML = `
+        <ul class="preflight-list">${checks.map(c => `
+          <li class="preflight-item">
+            <span class="preflight-icon">${c.status === 'pass' ? '✅' : c.status === 'warn' ? '⚠️' : '❌'}</span>
+            <span class="preflight-msg">${c.message || c.name}</span>
+          </li>
+        `).join('')}</ul>
+        <div class="confidence-badge confidence-${confidence}">${confLabel}</div>
+      `;
+    } catch (_) {
+      document.getElementById('preflightResults').innerHTML = '<div class="empty-state"><span class="es-icon">⚠️</span><p>Preflight check failed. You can still submit.</p></div>';
+    }
+  }
+
+  async function submitJob() {
+    const tpl = wizTemplates.find(t => t.id === wizSelected);
+    const inputs = {}, settings = {};
+    (tpl.schema || []).forEach(f => {
+      if (wizFormData[f.name] !== undefined) {
+        if (f.section === 'inputs') inputs[f.name] = wizFormData[f.name];
+        else settings[f.name] = wizFormData[f.name];
+      }
+    });
+    try {
+      const res = await fetch('/api/compute/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: wizSelected, inputs, settings })
+      });
+      if (res.ok) {
+        toast('✅', 'Job submitted successfully!');
+        wizardOverlay.classList.remove('open');
+        activeTab = 'jobs';
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'jobs'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-jobs'));
+        onTabChanged('jobs');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast('❌', err.error || 'Job submission failed');
+      }
+    } catch (_) { toast('❌', 'Job submission failed'); }
   }
 
   // ── Init ────────────────────────────────────────────────────

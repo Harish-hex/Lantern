@@ -443,13 +443,14 @@ func (c *Client) ClaimComputeTask(workerID, token string) (*protocol.ControlPayl
 	return ctrl, nil
 }
 
-func (c *Client) CompleteComputeTask(workerID, taskID, checksum, token string) error {
+func (c *Client) CompleteComputeTask(workerID, taskID, artifactID, checksum, token string) error {
 	_, err := c.sendControl(protocol.ControlPayload{
-		Type:     protocol.CtrlTaskResult,
-		WorkerID: workerID,
-		TaskID:   taskID,
-		Checksum: checksum,
-		Token:    token,
+		Type:       protocol.CtrlTaskResult,
+		WorkerID:   workerID,
+		TaskID:     taskID,
+		FileID:     artifactID,
+		Checksum:   checksum,
+		Token:      token,
 	})
 	return err
 }

@@ -479,10 +479,11 @@ func (h *Handler) handleTaskClaim(conn net.Conn, hdr protocol.Header, ctrl proto
 		Type:       protocol.CtrlTaskAssign,
 		WorkerID:   ctrl.WorkerID,
 		JobID:      task.JobID,
-		TaskID:     task.ID,
-		Attempt:    task.Attempt,
-		LeaseUntil: task.LeaseUntil,
-		Payload:    task.Payload,
+		TaskID:       task.ID,
+		Attempt:      task.Attempt,
+		LeaseUntil:   task.LeaseUntil,
+		Capabilities: task.RequiredCapabilities,
+		Payload:      task.Payload,
 	})
 }
 
@@ -526,7 +527,7 @@ func (h *Handler) handleTaskResult(conn net.Conn, hdr protocol.Header, ctrl prot
 		return
 	}
 
-	task, job, err := h.server.compute.CompleteTask(ctrl.WorkerID, ctrl.TaskID, ctrl.Checksum, time.Now())
+	task, job, err := h.server.compute.CompleteTask(ctrl.WorkerID, ctrl.TaskID, ctrl.FileID, ctrl.Checksum, time.Now())
 	if err != nil {
 		h.sendError(conn, hdr.SessionID, hdr.Sequence, err.Error())
 		return

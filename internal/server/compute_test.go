@@ -137,7 +137,7 @@ func TestCoordinatorCompleteTaskUpdatesWorkerAndJobState(t *testing.T) {
 		t.Fatal("expected first task claim")
 	}
 
-	completedTask, job, err := c.CompleteTask("worker-1", first.ID, "sha256:first", now.Add(20*time.Millisecond))
+	completedTask, job, err := c.CompleteTask("worker-1", first.ID, "", "sha256:first", now.Add(20*time.Millisecond))
 	if err != nil {
 		t.Fatalf("CompleteTask(first): %v", err)
 	}
@@ -162,7 +162,7 @@ func TestCoordinatorCompleteTaskUpdatesWorkerAndJobState(t *testing.T) {
 		t.Fatal("expected second task claim")
 	}
 
-	_, job, err = c.CompleteTask("worker-1", second.ID, "sha256:second", now.Add(40*time.Millisecond))
+	_, job, err = c.CompleteTask("worker-1", second.ID, "", "sha256:second", now.Add(40*time.Millisecond))
 	if err != nil {
 		t.Fatalf("CompleteTask(second): %v", err)
 	}
@@ -265,17 +265,17 @@ func TestCoordinatorRejectsInvalidTaskCompletionTransitions(t *testing.T) {
 		t.Fatal("expected task claim")
 	}
 
-	if _, _, err := c.CompleteTask("worker-b", task.ID, "", now.Add(20*time.Millisecond)); err == nil {
+	if _, _, err := c.CompleteTask("worker-b", task.ID, "", "", now.Add(20*time.Millisecond)); err == nil {
 		t.Fatal("expected ownership error")
 	}
-	if _, _, err := c.CompleteTask("worker-a", "missing-task", "", now.Add(20*time.Millisecond)); err == nil {
+	if _, _, err := c.CompleteTask("worker-a", "missing-task", "", "", now.Add(20*time.Millisecond)); err == nil {
 		t.Fatal("expected missing task error")
 	}
 	if _, _, err := c.FailTask("worker-a", task.ID, "", "", now.Add(20*time.Millisecond)); err == nil {
 		t.Fatal("expected missing failure message error")
 	}
 
-	if _, _, err := c.CompleteTask("worker-a", task.ID, "sha256:done", now.Add(30*time.Millisecond)); err != nil {
+	if _, _, err := c.CompleteTask("worker-a", task.ID, "", "sha256:done", now.Add(30*time.Millisecond)); err != nil {
 		t.Fatalf("CompleteTask: %v", err)
 	}
 	if _, _, err := c.FailTask("worker-a", task.ID, "late failure", "", now.Add(40*time.Millisecond)); err == nil {
@@ -373,7 +373,7 @@ func TestCoordinatorJobStateReturnsSnapshot(t *testing.T) {
 	if !ok || claimed == nil {
 		t.Fatal("expected claim")
 	}
-	if _, _, err := c.CompleteTask("worker-state", claimed.ID, "sha256:ok", now.Add(20*time.Millisecond)); err != nil {
+	if _, _, err := c.CompleteTask("worker-state", claimed.ID, "", "sha256:ok", now.Add(20*time.Millisecond)); err != nil {
 		t.Fatalf("CompleteTask: %v", err)
 	}
 

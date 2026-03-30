@@ -53,14 +53,29 @@ type ComputePreflight struct {
 	Checks               []ComputePreflightCheck `json:"checks,omitempty"`
 }
 
+// TemplateFieldDescriptor describes a single input or setting field for
+// rendering dynamic forms in the web dashboard.
+type TemplateFieldDescriptor struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"`     // "string", "string[]", "int", "bool", "select"
+	Section  string   `json:"section"`  // "inputs" or "settings"
+	Required bool     `json:"required"`
+	Default  any      `json:"default,omitempty"`
+	Options  []string `json:"options,omitempty"` // for "select" type
+	Help     string   `json:"help,omitempty"`
+}
+
 type ComputeTemplate struct {
-	ID                   string          `json:"id"`
-	Name                 string          `json:"name"`
-	BestFor              string          `json:"best_for"`
-	OutputKind           string          `json:"output_kind"`
-	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
-	DefaultInputs        json.RawMessage `json:"default_inputs,omitempty"`
-	DefaultSettings      json.RawMessage `json:"default_settings,omitempty"`
+	ID                   string                    `json:"id"`
+	Name                 string                    `json:"name"`
+	Icon                 string                    `json:"icon"`
+	BestFor              string                    `json:"best_for"`
+	OutputKind           string                    `json:"output_kind"`
+	RequiredCapabilities []string                  `json:"required_capabilities,omitempty"`
+	DefaultInputs        json.RawMessage           `json:"default_inputs,omitempty"`
+	DefaultSettings      json.RawMessage           `json:"default_settings,omitempty"`
+	Schema               []TemplateFieldDescriptor `json:"schema,omitempty"`
 }
 
 type ComputeTemplateMetric struct {
@@ -171,6 +186,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 			template: ComputeTemplate{
 				ID:                   "render_frames",
 				Name:                 "Render Frames",
+				Icon:                 "🎬",
 				BestFor:              "frame-range render workloads",
 				OutputKind:           "frame archive with optional stitched output",
 				RequiredCapabilities: []string{"render_frames"},
@@ -184,6 +200,14 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					StitchedOutput: true,
 					OutputFormat:   "png",
 				}),
+				Schema: []TemplateFieldDescriptor{
+					{Name: "scene", Label: "Scene File", Type: "string", Section: "inputs", Required: true, Default: "scene.blend", Help: "Path to Blender scene file"},
+					{Name: "frame_start", Label: "Start Frame", Type: "int", Section: "inputs", Required: true, Default: 1, Help: "First frame number"},
+					{Name: "frame_end", Label: "End Frame", Type: "int", Section: "inputs", Required: true, Default: 24, Help: "Last frame number"},
+					{Name: "chunk_size", Label: "Chunk Size", Type: "int", Section: "inputs", Required: false, Default: 6, Help: "Frames per task chunk"},
+					{Name: "stitched_output", Label: "Stitch Output", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Combine frames into video"},
+					{Name: "output_format", Label: "Output Format", Type: "select", Section: "settings", Required: false, Default: "png", Options: []string{"png", "exr", "jpg"}, Help: "Frame image format"},
+				},
 			},
 			compile: compileRenderFrames,
 		},
@@ -191,6 +215,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 			template: ComputeTemplate{
 				ID:                   "video_transcode_batch",
 				Name:                 "Video Transcode Batch",
+				Icon:                 "📽",
 				BestFor:              "converting many source videos to standard presets",
 				OutputKind:           "transformed video batch package",
 				RequiredCapabilities: []string{"video_transcode_batch"},
@@ -203,6 +228,13 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					Container:    "mp4",
 					EmitManifest: true,
 				}),
+				Schema: []TemplateFieldDescriptor{
+					{Name: "sources", Label: "Source Videos", Type: "string[]", Section: "inputs", Required: true, Help: "Video file paths, one per line"},
+					{Name: "preset", Label: "Preset", Type: "select", Section: "settings", Required: false, Default: "1080p-h264", Options: []string{"1080p-h264", "720p-h264", "4k-h265", "480p-h264"}, Help: "Target quality preset"},
+					{Name: "audio_codec", Label: "Audio Codec", Type: "select", Section: "settings", Required: false, Default: "aac", Options: []string{"aac", "opus", "copy"}, Help: "Audio encoding"},
+					{Name: "container", Label: "Container", Type: "select", Section: "settings", Required: false, Default: "mp4", Options: []string{"mp4", "mkv", "webm"}, Help: "Output container format"},
+					{Name: "emit_manifest", Label: "Emit Manifest", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Generate output manifest JSON"},
+				},
 			},
 			compile: compileVideoTranscodeBatch,
 		},
@@ -210,6 +242,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 			template: ComputeTemplate{
 				ID:                   "image_batch_pipeline",
 				Name:                 "Image Batch Pipeline",
+				Icon:                 "🖼",
 				BestFor:              "resize, format conversion, watermark, and optimization",
 				OutputKind:           "processed image bundle",
 				RequiredCapabilities: []string{"image_batch_pipeline"},
@@ -222,6 +255,13 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					Watermark:   false,
 					Optimize:    true,
 				}),
+				Schema: []TemplateFieldDescriptor{
+					{Name: "images", Label: "Image Files", Type: "string[]", Section: "inputs", Required: true, Help: "Image file paths, one per line"},
+					{Name: "format", Label: "Output Format", Type: "select", Section: "settings", Required: false, Default: "webp", Options: []string{"webp", "png", "jpg", "avif"}, Help: "Target image format"},
+					{Name: "resize_width", Label: "Max Width", Type: "int", Section: "settings", Required: false, Default: 2048, Help: "Maximum width in pixels (0 = no resize)"},
+					{Name: "watermark", Label: "Watermark", Type: "bool", Section: "settings", Required: false, Default: false, Help: "Apply watermark overlay"},
+					{Name: "optimize", Label: "Optimize", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Strip metadata and optimize size"},
+				},
 			},
 			compile: compileImageBatchPipeline,
 		},
@@ -229,6 +269,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 			template: ComputeTemplate{
 				ID:                   "data_processing_batch",
 				Name:                 "Data Processing Batch",
+				Icon:                 "📊",
 				BestFor:              "CSV and JSON transformation plus enrichment",
 				OutputKind:           "transformed datasets and summary report",
 				RequiredCapabilities: []string{"data_processing_batch"},
@@ -239,6 +280,11 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					Transforms:    []string{"normalize", "enrich"},
 					SummaryReport: true,
 				}),
+				Schema: []TemplateFieldDescriptor{
+					{Name: "datasets", Label: "Dataset Files", Type: "string[]", Section: "inputs", Required: true, Help: "CSV or JSON file paths, one per line"},
+					{Name: "transforms", Label: "Transforms", Type: "string[]", Section: "settings", Required: false, Default: "normalize\nenrich", Help: "Transform steps to apply, one per line"},
+					{Name: "summary_report", Label: "Summary Report", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Generate a summary report"},
+				},
 			},
 			compile: compileDataProcessingBatch,
 		},
@@ -246,6 +292,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 			template: ComputeTemplate{
 				ID:                   "document_ocr_batch",
 				Name:                 "Document OCR Batch",
+				Icon:                 "📝",
 				BestFor:              "PDF and image text extraction with normalization",
 				OutputKind:           "text and JSON extraction package with logs",
 				RequiredCapabilities: []string{"document_ocr_batch"},
@@ -257,11 +304,18 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					EmitJSON:      true,
 					Language:      "eng",
 				}),
+				Schema: []TemplateFieldDescriptor{
+					{Name: "documents", Label: "Document Files", Type: "string[]", Section: "inputs", Required: true, Help: "PDF or image file paths, one per line"},
+					{Name: "normalize_text", Label: "Normalize Text", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Trim whitespace and normalize unicode"},
+					{Name: "emit_json", Label: "Emit JSON", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Output structured JSON"},
+					{Name: "language", Label: "Language", Type: "select", Section: "settings", Required: false, Default: "eng", Options: []string{"eng", "spa", "fra", "deu", "jpn", "zho"}, Help: "OCR language model"},
+				},
 			},
 			compile: compileDocumentOCRBatch,
 		},
 	}
 }
+
 
 func normalizeComputeTemplateID(raw string) string {
 	normalized := strings.TrimSpace(strings.ToLower(raw))

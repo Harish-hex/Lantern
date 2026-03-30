@@ -9,8 +9,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,6 +26,7 @@ import (
 	"github.com/Harish-hex/Lantern/internal/protocol"
 	"github.com/Harish-hex/Lantern/internal/server"
 	"github.com/Harish-hex/Lantern/internal/web"
+	"github.com/Harish-hex/Lantern/internal/worker"
 	qrterminal "github.com/mdp/qrterminal/v3"
 )
 
@@ -499,58 +498,29 @@ func cmdWorker(args []string) {
 		*workerID = fmt.Sprintf("worker-%d", time.Now().Unix())
 	}
 
-	capList := splitCSV(*capabilities)
-	c, err := client.New(*host, *port)
-	if err != nil {
-		log.Fatalf("connect: %v", err)
+	runnerCfg := worker.RunnerConfig{
+		Host:         *host,
+		Port:         *port,
+		WorkerID:     *workerID,
+		Token:        *token,
+		Heartbeat:    *heartbeat,
+		PollInterval: *poll,
+		OneShot:      *oneShot,
+		Registry:     worker.NewRegistry(),
+		// ToolchainManager can be setup here later
 	}
-	defer c.Close()
 
-	if err := c.RegisterWorker(*workerID, *token, capList); err != nil {
-		log.Fatalf("register worker: %v", err)
+	// Register the available executors
+	runnerCfg.Registry.Register(worker.NewDataProcessingExecutor())
+
+	// Override capabilities if requested (usually we let registry define it)
+	if *capabilities != defaultWorkerCapabilityCSV() {
+		log.Printf("Warning: --capabilities override is deprecated, capabilities are derived from the registry.")
 	}
-	log.Printf("worker %s registered", *workerID)
 
-	nextHeartbeat := time.Now()
-	completed := 0
-	for {
-		now := time.Now()
-		if now.After(nextHeartbeat) {
-			if err := c.HeartbeatWorker(*workerID, *token); err != nil {
-				log.Printf("heartbeat failed: %v", err)
-			} else {
-				log.Printf("heartbeat ok")
-			}
-			nextHeartbeat = now.Add(*heartbeat)
-		}
-
-		resp, err := c.ClaimComputeTask(*workerID, *token)
-		if err != nil {
-			log.Printf("claim failed: %v", err)
-			time.Sleep(*poll)
-			continue
-		}
-		if resp.Type == protocol.CtrlNAK {
-			time.Sleep(*poll)
-			continue
-		}
-
-		payloadDigest := sha256.Sum256(resp.Payload)
-		checksum := "sha256:" + hex.EncodeToString(payloadDigest[:])
-
-		if err := c.CompleteComputeTask(*workerID, resp.TaskID, checksum, *token); err != nil {
-			log.Printf("task complete failed for %s: %v", resp.TaskID, err)
-			_ = c.FailComputeTask(*workerID, resp.TaskID, err.Error(), checksum, *token)
-			time.Sleep(*poll)
-			continue
-		}
-
-		completed++
-		log.Printf("completed task %s for job %s", resp.TaskID, resp.JobID)
-		if *oneShot && completed >= 1 {
-			log.Printf("oneshot mode complete")
-			return
-		}
+	r := worker.NewRunner(runnerCfg)
+	if err := r.Run(context.Background()); err != nil {
+		log.Fatalf("runner failed: %v", err)
 	}
 }
 

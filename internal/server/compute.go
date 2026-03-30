@@ -415,15 +415,15 @@ func (c *Coordinator) ClaimTask(workerID string, now time.Time) (*ComputeTask, b
 	return nil, false
 }
 
-func (c *Coordinator) CompleteTask(workerID, taskID, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
-	return c.finishTask(workerID, taskID, ComputeTaskStatusCompleted, "", checksum, now)
+func (c *Coordinator) CompleteTask(workerID, taskID, artifactID, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
+	return c.finishTask(workerID, taskID, ComputeTaskStatusCompleted, "", artifactID, checksum, now)
 }
 
 func (c *Coordinator) FailTask(workerID, taskID, errMsg, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
 	if errMsg == "" {
 		return nil, nil, fmt.Errorf("missing failure message")
 	}
-	return c.finishTask(workerID, taskID, ComputeTaskStatusNeedsAttention, errMsg, checksum, now)
+	return c.finishTask(workerID, taskID, ComputeTaskStatusNeedsAttention, errMsg, "", checksum, now)
 }
 
 func (c *Coordinator) RegisterWorker(workerID string, capabilities []string, now time.Time) {
@@ -778,7 +778,7 @@ func (c *Coordinator) SetWorkerDisabled(workerID string, disabled bool, reason s
 	return c.cloneWorker(worker), nil
 }
 
-func (c *Coordinator) finishTask(workerID, taskID, status, errMsg, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
+func (c *Coordinator) finishTask(workerID, taskID, status, errMsg, artifactID, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
 	if c == nil || !c.cfg.ComputeEnabled {
 		return nil, nil, fmt.Errorf("compute disabled")
 	}
@@ -822,6 +822,17 @@ func (c *Coordinator) finishTask(workerID, taskID, status, errMsg, checksum stri
 		task.Error = ""
 		task.FailureCategory = ""
 		worker.CompletedTasks++
+
+		if artifactID != "" {
+			// Save the artifact to the job
+			artifact := ComputeArtifact{
+				ID:        artifactID,
+				Name:      fmt.Sprintf("%s-results.zip", taskID),
+				Kind:      "zip",
+				CreatedAt: now,
+			}
+			job.Artifacts = append(job.Artifacts, artifact)
+		}
 	} else {
 		c.retryOrFailTaskLocked(task, worker, errMsg, classifyComputeFailure(errMsg), now, false)
 	}
