@@ -14,3 +14,9 @@ test-storage/
 
 # Local scratch copies
 Lantern-1/
+
+# Local runtime artifacts
+.lantern-runtime/
+tmp_lantern
+worker.log
+worker_test.log
