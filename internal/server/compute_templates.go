@@ -58,8 +58,8 @@ type ComputePreflight struct {
 type TemplateFieldDescriptor struct {
 	Name     string   `json:"name"`
 	Label    string   `json:"label"`
-	Type     string   `json:"type"`     // "string", "string[]", "int", "bool", "select"
-	Section  string   `json:"section"`  // "inputs" or "settings"
+	Type     string   `json:"type"`    // "string", "string[]", "int", "bool", "select"
+	Section  string   `json:"section"` // "inputs" or "settings"
 	Required bool     `json:"required"`
 	Default  any      `json:"default,omitempty"`
 	Options  []string `json:"options,omitempty"` // for "select" type
@@ -145,6 +145,7 @@ type imageBatchInputs struct {
 type imageBatchSettings struct {
 	Format      string `json:"format"`
 	ResizeWidth int    `json:"resize_width"`
+	Upscale     bool   `json:"upscale"`
 	Watermark   bool   `json:"watermark"`
 	Optimize    bool   `json:"optimize"`
 }
@@ -229,7 +230,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					EmitManifest: true,
 				}),
 				Schema: []TemplateFieldDescriptor{
-					{Name: "sources", Label: "Source Videos", Type: "string[]", Section: "inputs", Required: true, Help: "Video file paths, one per line"},
+					{Name: "sources", Label: "Source Videos", Type: "file[]", Section: "inputs", Required: true, Help: "Video file paths, one per line"},
 					{Name: "preset", Label: "Preset", Type: "select", Section: "settings", Required: false, Default: "1080p-h264", Options: []string{"1080p-h264", "720p-h264", "4k-h265", "480p-h264"}, Help: "Target quality preset"},
 					{Name: "audio_codec", Label: "Audio Codec", Type: "select", Section: "settings", Required: false, Default: "aac", Options: []string{"aac", "opus", "copy"}, Help: "Audio encoding"},
 					{Name: "container", Label: "Container", Type: "select", Section: "settings", Required: false, Default: "mp4", Options: []string{"mp4", "mkv", "webm"}, Help: "Output container format"},
@@ -250,15 +251,17 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					Images: []string{"image-001.png", "image-002.png", "image-003.png", "image-004.png"},
 				}),
 				DefaultSettings: mustMarshalRaw(imageBatchSettings{
-					Format:      "webp",
+					Format:      "png",
 					ResizeWidth: 2048,
+					Upscale:     false,
 					Watermark:   false,
 					Optimize:    true,
 				}),
 				Schema: []TemplateFieldDescriptor{
-					{Name: "images", Label: "Image Files", Type: "string[]", Section: "inputs", Required: true, Help: "Image file paths, one per line"},
-					{Name: "format", Label: "Output Format", Type: "select", Section: "settings", Required: false, Default: "webp", Options: []string{"webp", "png", "jpg", "avif"}, Help: "Target image format"},
-					{Name: "resize_width", Label: "Max Width", Type: "int", Section: "settings", Required: false, Default: 2048, Help: "Maximum width in pixels (0 = no resize)"},
+					{Name: "images", Label: "Image Files", Type: "file[]", Section: "inputs", Required: true, Help: "Image file paths, one per line"},
+					{Name: "format", Label: "Output Format", Type: "select", Section: "settings", Required: false, Default: "png", Options: []string{"png", "jpg", "webp"}, Help: "Target image format"},
+					{Name: "resize_width", Label: "Max Width", Type: "int", Section: "settings", Required: false, Default: 2048, Help: "Target width in pixels (0 = no resize)"},
+					{Name: "upscale", Label: "Upscale Smaller Images", Type: "bool", Section: "settings", Required: false, Default: false, Help: "Allow increasing smaller images up to target width"},
 					{Name: "watermark", Label: "Watermark", Type: "bool", Section: "settings", Required: false, Default: false, Help: "Apply watermark overlay"},
 					{Name: "optimize", Label: "Optimize", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Strip metadata and optimize size"},
 				},
@@ -281,7 +284,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					SummaryReport: true,
 				}),
 				Schema: []TemplateFieldDescriptor{
-					{Name: "datasets", Label: "Dataset Files", Type: "string[]", Section: "inputs", Required: true, Help: "CSV or JSON file paths, one per line"},
+					{Name: "datasets", Label: "Dataset Files", Type: "file[]", Section: "inputs", Required: true, Help: "CSV or JSON file paths, one per line"},
 					{Name: "transforms", Label: "Transforms", Type: "string[]", Section: "settings", Required: false, Default: "normalize\nenrich", Help: "Transform steps to apply, one per line"},
 					{Name: "summary_report", Label: "Summary Report", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Generate a summary report"},
 				},
@@ -305,7 +308,7 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 					Language:      "eng",
 				}),
 				Schema: []TemplateFieldDescriptor{
-					{Name: "documents", Label: "Document Files", Type: "string[]", Section: "inputs", Required: true, Help: "PDF or image file paths, one per line"},
+					{Name: "documents", Label: "Document Files", Type: "file[]", Section: "inputs", Required: true, Help: "PDF or image file paths, one per line"},
 					{Name: "normalize_text", Label: "Normalize Text", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Trim whitespace and normalize unicode"},
 					{Name: "emit_json", Label: "Emit JSON", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Output structured JSON"},
 					{Name: "language", Label: "Language", Type: "select", Section: "settings", Required: false, Default: "eng", Options: []string{"eng", "spa", "fra", "deu", "jpn", "zho"}, Help: "OCR language model"},
@@ -315,7 +318,6 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 		},
 	}
 }
-
 
 func normalizeComputeTemplateID(raw string) string {
 	normalized := strings.TrimSpace(strings.ToLower(raw))
@@ -479,8 +481,9 @@ func compileImageBatchPipeline(inputsRaw, settingsRaw json.RawMessage) (*compile
 		Images: []string{"image-001.png", "image-002.png", "image-003.png", "image-004.png"},
 	}
 	settings := imageBatchSettings{
-		Format:      "webp",
+		Format:      "png",
 		ResizeWidth: 2048,
+		Upscale:     false,
 		Watermark:   false,
 		Optimize:    true,
 	}
@@ -515,6 +518,7 @@ func compileImageBatchPipeline(inputsRaw, settingsRaw json.RawMessage) (*compile
 				"image":        image,
 				"format":       format,
 				"resize_width": settings.ResizeWidth,
+				"upscale":      settings.Upscale,
 				"watermark":    settings.Watermark,
 				"optimize":     settings.Optimize,
 			}),

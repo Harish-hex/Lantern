@@ -36,6 +36,8 @@ type ComputeJob struct {
 	Artifacts            []ComputeArtifact `json:"artifacts,omitempty"`
 }
 
+type ComputeArtifactAssembler func(job *ComputeJob, tasks []*ComputeTask, now time.Time) ([]ComputeArtifact, error)
+
 type ComputeTask struct {
 	ID                   string          `json:"id"`
 	JobID                string          `json:"job_id"`
@@ -50,6 +52,7 @@ type ComputeTask struct {
 	FailureCategory      string          `json:"failure_category,omitempty"`
 	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
 	Payload              json.RawMessage `json:"payload,omitempty"`
+	LogEntries           []string        `json:"log_entries,omitempty"` // ring buffer, max maxTaskLogLines
 }
 
 type ComputeWorker struct {
@@ -86,10 +89,11 @@ type Coordinator struct {
 	idx index.Store
 	mu  sync.Mutex
 
-	jobs    map[string]*ComputeJob
-	tasks   map[string]*ComputeTask
-	workers map[string]*ComputeWorker
-	queue   []string
+	jobs              map[string]*ComputeJob
+	tasks             map[string]*ComputeTask
+	workers           map[string]*ComputeWorker
+	queue             []string
+	artifactAssembler ComputeArtifactAssembler
 }
 
 type computeSubmissionBuild struct {
@@ -112,6 +116,50 @@ func NewCoordinator(cfg config.Config, idx index.Store) *Coordinator {
 		workers: make(map[string]*ComputeWorker),
 		queue:   make([]string, 0),
 	}
+}
+
+func (c *Coordinator) SetArtifactAssembler(assembler ComputeArtifactAssembler) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.artifactAssembler = assembler
+}
+
+// maxTaskLogLines is the ring-buffer capacity for per-task log entries.
+const maxTaskLogLines = 200
+
+// AppendTaskLog appends log lines from a worker to the task's ring buffer.
+// Only the last maxTaskLogLines lines are kept; older entries are discarded
+// and a truncation notice is prepended so users know logs were trimmed.
+func (c *Coordinator) AppendTaskLog(workerID, taskID string, lines []string, now time.Time) error {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return fmt.Errorf("compute disabled")
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	task, ok := c.tasks[taskID]
+	if !ok || task == nil {
+		return fmt.Errorf("task %q not found", taskID)
+	}
+	if task.WorkerID != workerID {
+		return fmt.Errorf("task %q is not owned by worker %q", taskID, workerID)
+	}
+
+	task.LogEntries = append(task.LogEntries, lines...)
+	if len(task.LogEntries) > maxTaskLogLines {
+		overflow := len(task.LogEntries) - maxTaskLogLines
+		notice := fmt.Sprintf("[LANTERN: Log truncated — showing last %d lines, %d lines dropped]", maxTaskLogLines, overflow)
+		task.LogEntries = append([]string{notice}, task.LogEntries[overflow+1:]...)
+	}
+	task.UpdatedAt = now
+	return nil
 }
 
 func (c *Coordinator) Restore() error {
@@ -713,6 +761,56 @@ func (c *Coordinator) RetryJob(jobID string, now time.Time) (*ComputeJob, error)
 	return c.cloneJob(job), nil
 }
 
+func (c *Coordinator) DeleteJob(jobID string, now time.Time) (*ComputeJob, int, error) {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return nil, 0, fmt.Errorf("compute disabled")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	job := c.jobs[jobID]
+	if job == nil {
+		return nil, 0, fmt.Errorf("job %s not found", jobID)
+	}
+
+	removedTasks := 0
+	for taskID, task := range c.tasks {
+		if task == nil || task.JobID != jobID {
+			continue
+		}
+
+		if task.WorkerID != "" {
+			if worker := c.workers[task.WorkerID]; worker != nil {
+				worker.LeaseUntil = time.Time{}
+				if worker.Disabled {
+					worker.Status = "disabled"
+				} else if c.workerHasActiveLeaseLocked(worker.ID) {
+					worker.Status = "busy"
+				} else {
+					worker.Status = "ready"
+				}
+				c.saveWorkerLocked(worker)
+			}
+		}
+
+		c.removeTaskFromQueueLocked(taskID)
+		delete(c.tasks, taskID)
+		if c.idx != nil {
+			_ = c.idx.DeleteComputeTask(taskID)
+		}
+		removedTasks++
+	}
+
+	deleted := c.cloneJob(job)
+	delete(c.jobs, jobID)
+	if c.idx != nil {
+		_ = c.idx.DeleteComputeJob(jobID)
+	}
+
+	return deleted, removedTasks, nil
+}
+
 func (c *Coordinator) RequeueStalledTasks(now time.Time) ([]string, error) {
 	if c == nil || !c.cfg.ComputeEnabled {
 		return nil, fmt.Errorf("compute disabled")
@@ -778,6 +876,37 @@ func (c *Coordinator) SetWorkerDisabled(workerID string, disabled bool, reason s
 	return c.cloneWorker(worker), nil
 }
 
+func (c *Coordinator) DeleteWorker(workerID string, now time.Time) (*ComputeWorker, int, error) {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return nil, 0, fmt.Errorf("compute disabled")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	worker := c.workers[workerID]
+	if worker == nil {
+		return nil, 0, fmt.Errorf("worker %s not found", workerID)
+	}
+
+	reassigned := 0
+	for _, task := range c.tasks {
+		if task == nil || task.WorkerID != worker.ID || task.Status != ComputeTaskStatusLeased {
+			continue
+		}
+		c.retryOrFailTaskLocked(task, worker, "worker removed by operator", ComputeFailureTransientInfrastructure, now, false)
+		reassigned++
+	}
+
+	deleted := c.cloneWorker(worker)
+	delete(c.workers, workerID)
+	if c.idx != nil {
+		_ = c.idx.DeleteComputeWorker(workerID)
+	}
+
+	return deleted, reassigned, nil
+}
+
 func (c *Coordinator) finishTask(workerID, taskID, status, errMsg, artifactID, checksum string, now time.Time) (*ComputeTask, *ComputeJob, error) {
 	if c == nil || !c.cfg.ComputeEnabled {
 		return nil, nil, fmt.Errorf("compute disabled")
@@ -824,11 +953,10 @@ func (c *Coordinator) finishTask(workerID, taskID, status, errMsg, artifactID, c
 		worker.CompletedTasks++
 
 		if artifactID != "" {
-			// Save the artifact to the job
 			artifact := ComputeArtifact{
 				ID:        artifactID,
 				Name:      fmt.Sprintf("%s-results.zip", taskID),
-				Kind:      "zip",
+				Kind:      "task_package",
 				CreatedAt: now,
 			}
 			job.Artifacts = append(job.Artifacts, artifact)
@@ -971,14 +1099,14 @@ func (c *Coordinator) buildPreflightLocked(displayName string, requiredCapabilit
 	case healthyWorkers == 0:
 		checks = append(checks, ComputePreflightCheck{
 			Code:    "capability_match",
-			Status:  "fail",
-			Message: fmt.Sprintf("no healthy workers are available for %s", displayName),
+			Status:  "warn",
+			Message: fmt.Sprintf("no healthy workers are currently online for %s — job will queue and execute when a worker connects", displayName),
 		})
 	case len(requiredCapabilities) > 0 && matchingWorkers == 0:
 		checks = append(checks, ComputePreflightCheck{
 			Code:    "capability_match",
-			Status:  "fail",
-			Message: fmt.Sprintf("no healthy workers advertise %s", strings.Join(requiredCapabilities, ", ")),
+			Status:  "warn",
+			Message: fmt.Sprintf("no healthy workers currently advertise %s — job will queue until a capable worker connects", strings.Join(requiredCapabilities, ", ")),
 		})
 	case matchingWorkers <= 1:
 		checks = append(checks, ComputePreflightCheck{
@@ -1001,6 +1129,9 @@ func (c *Coordinator) buildPreflightLocked(displayName string, requiredCapabilit
 			Message: "large chunk count may increase queue tail latency on 2-5 worker clusters",
 		})
 	}
+
+	// Real disk space check on the coordinator's artifact storage directory.
+	checks = append(checks, buildDiskSpaceCheck(estimatedOutputBytes))
 
 	preflight := ComputePreflight{
 		Ready:                true,
@@ -1195,13 +1326,13 @@ func (c *Coordinator) refreshJobLocked(jobID string, now time.Time) {
 		job.NeedsAttentionReason = firstFailureReason
 		job.FailureCategory = firstFailureCategory
 	case completed == job.TotalTasks && job.TotalTasks > 0:
-		if len(job.Artifacts) == 0 {
-			job.Status = ComputeJobStatusAssembling
-		} else {
+		if jobHasFinalArtifact(job) {
 			job.Status = ComputeJobStatusDone
 			if job.FinishedAt.IsZero() {
 				job.FinishedAt = now
 			}
+		} else {
+			job.Status = ComputeJobStatusAssembling
 		}
 	case retrying > 0:
 		job.Status = ComputeJobStatusRetrying
@@ -1235,10 +1366,12 @@ func (c *Coordinator) finalizeJobLocked(job *ComputeJob, now time.Time) {
 	}
 
 	taskSummaries := make([]artifactTaskSummary, 0, job.TotalTasks)
+	taskClones := make([]*ComputeTask, 0, job.TotalTasks)
 	for _, task := range c.tasks {
 		if task == nil || task.JobID != job.ID {
 			continue
 		}
+		taskClones = append(taskClones, c.cloneTask(task))
 		taskSummaries = append(taskSummaries, artifactTaskSummary{
 			ID:       task.ID,
 			Checksum: task.Checksum,
@@ -1259,15 +1392,42 @@ func (c *Coordinator) finalizeJobLocked(job *ComputeJob, now time.Time) {
 	if namePrefix == "" {
 		namePrefix = job.Type
 	}
-	job.Artifacts = []ComputeArtifact{
-		{
-			ID:        fmt.Sprintf("%s_artifact_01", job.ID),
-			Name:      fmt.Sprintf("%s-%s-summary.json", job.ID, namePrefix),
-			Kind:      "summary_json",
-			SizeBytes: int64(len(summary)),
-			CreatedAt: now,
-			Summary:   summary,
-		},
+
+	if c.artifactAssembler != nil {
+		artifacts, err := c.artifactAssembler(c.cloneJob(job), taskClones, now)
+		if err != nil {
+			job.Status = ComputeJobStatusNeedsAttention
+			job.NeedsAttentionReason = fmt.Sprintf("artifact assembly failed: %v", err)
+			job.FailureCategory = ComputeFailureTransientInfrastructure
+			job.UpdatedAt = now
+			c.saveJobLocked(job)
+			return
+		}
+		if len(artifacts) > 0 {
+			job.Artifacts = cloneArtifacts(artifacts)
+		} else {
+			job.Artifacts = []ComputeArtifact{
+				{
+					ID:        fmt.Sprintf("%s_artifact_01", job.ID),
+					Name:      fmt.Sprintf("%s-%s-summary.json", job.ID, namePrefix),
+					Kind:      "summary_json",
+					SizeBytes: int64(len(summary)),
+					CreatedAt: now,
+					Summary:   summary,
+				},
+			}
+		}
+	} else {
+		job.Artifacts = []ComputeArtifact{
+			{
+				ID:        fmt.Sprintf("%s_artifact_01", job.ID),
+				Name:      fmt.Sprintf("%s-%s-summary.json", job.ID, namePrefix),
+				Kind:      "summary_json",
+				SizeBytes: int64(len(summary)),
+				CreatedAt: now,
+				Summary:   summary,
+			},
+		}
 	}
 	job.Status = ComputeJobStatusDone
 	job.FinishedAt = now
@@ -1574,6 +1734,19 @@ func cloneArtifacts(artifacts []ComputeArtifact) []ComputeArtifact {
 		out = append(out, cp)
 	}
 	return out
+}
+
+func jobHasFinalArtifact(job *ComputeJob) bool {
+	if job == nil {
+		return false
+	}
+	for _, artifact := range job.Artifacts {
+		switch artifact.Kind {
+		case "final_package", "summary_json":
+			return true
+		}
+	}
+	return false
 }
 
 func preflightFailureMessage(preflight ComputePreflight) string {

@@ -1,7 +1,10 @@
 package server
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -478,11 +481,19 @@ func TestCoordinatorPreviewTemplateSubmissionAllowsNotReadyPreflight(t *testing.
 	if err != nil {
 		t.Fatalf("PreviewJob: %v", err)
 	}
-	if preview.Preflight.Ready {
-		t.Fatal("expected not-ready preflight when no healthy workers exist")
+	// Preflight should be ready even without workers — jobs queue and wait.
+	if !preview.Preflight.Ready {
+		t.Fatal("expected ready preflight — jobs should queue even without healthy workers")
 	}
-	if len(preview.Preflight.Checks) == 0 {
-		t.Fatal("expected preflight checks")
+	// But it should have a warning about no healthy workers.
+	hasCapWarning := false
+	for _, check := range preview.Preflight.Checks {
+		if check.Code == "capability_match" && check.Status == "warn" {
+			hasCapWarning = true
+		}
+	}
+	if !hasCapWarning {
+		t.Fatal("expected a capability_match warning when no healthy workers exist")
 	}
 	if len(c.JobsSnapshot()) != 0 {
 		t.Fatalf("jobs persisted after preview = %d, want 0", len(c.JobsSnapshot()))
@@ -628,4 +639,103 @@ func TestCoordinatorRetryJobResetsTerminalState(t *testing.T) {
 	if reclaimed.Attempt != 1 {
 		t.Fatalf("reclaimed attempt = %d, want 1", reclaimed.Attempt)
 	}
+}
+
+func TestCoordinatorAssemblesFinalArtifactPackage(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComputeEnabled = true
+	base := t.TempDir()
+	cfg.StorageDir = filepath.Join(base, "storage")
+	cfg.TempDir = filepath.Join(base, "tmp")
+	cfg.IndexDir = filepath.Join(base, "index")
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+
+	now := time.Now().UTC()
+	srv.compute.RegisterWorker("worker-package", nil, now)
+
+	_, _, err = srv.compute.SubmitJob("job-package", ComputeJobSubmit{
+		Type: "generic_v1",
+		Tasks: []json.RawMessage{
+			json.RawMessage(`{"task":1}`),
+			json.RawMessage(`{"task":2}`),
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+
+	taskOne, ok := srv.compute.ClaimTask("worker-package", now.Add(10*time.Millisecond))
+	if !ok || taskOne == nil {
+		t.Fatal("expected first task claim")
+	}
+	artifactOne := createStoredArtifactForTest(t, srv, "artifact-one", "task-one.zip", []byte("task-one"), now)
+	if _, _, err := srv.compute.CompleteTask("worker-package", taskOne.ID, artifactOne.ID, "sha256:first", now.Add(20*time.Millisecond)); err != nil {
+		t.Fatalf("CompleteTask(first): %v", err)
+	}
+
+	taskTwo, ok := srv.compute.ClaimTask("worker-package", now.Add(30*time.Millisecond))
+	if !ok || taskTwo == nil {
+		t.Fatal("expected second task claim")
+	}
+	artifactTwo := createStoredArtifactForTest(t, srv, "artifact-two", "task-two.zip", []byte("task-two"), now)
+	_, job, err := srv.compute.CompleteTask("worker-package", taskTwo.ID, artifactTwo.ID, "sha256:second", now.Add(40*time.Millisecond))
+	if err != nil {
+		t.Fatalf("CompleteTask(second): %v", err)
+	}
+
+	if job.Status != ComputeJobStatusDone {
+		t.Fatalf("job status = %q, want %s", job.Status, ComputeJobStatusDone)
+	}
+	if len(job.Artifacts) != 1 {
+		t.Fatalf("job artifacts len = %d, want 1", len(job.Artifacts))
+	}
+	if job.Artifacts[0].Kind != "final_package" {
+		t.Fatalf("final artifact kind = %q, want final_package", job.Artifacts[0].Kind)
+	}
+
+	finalFile := srv.storage.GetFile(job.Artifacts[0].ID)
+	if finalFile == nil {
+		t.Fatalf("final stored file %s not found", job.Artifacts[0].ID)
+	}
+
+	reader, err := zip.OpenReader(finalFile.Path)
+	if err != nil {
+		t.Fatalf("zip.OpenReader(%s): %v", finalFile.Path, err)
+	}
+	defer reader.Close()
+
+	entries := make(map[string]bool)
+	for _, file := range reader.File {
+		entries[file.Name] = true
+	}
+	for _, required := range []string{"manifest.json", "task_artifacts/task-one.zip", "task_artifacts/task-two.zip"} {
+		if !entries[required] {
+			t.Fatalf("final package missing %s", required)
+		}
+	}
+}
+
+func createStoredArtifactForTest(t *testing.T, srv *Server, fileID, filename string, content []byte, now time.Time) *StoredFile {
+	t.Helper()
+
+	tempPath := filepath.Join(srv.cfg.TempDir, fileID+".tmp")
+	if err := os.WriteFile(tempPath, content, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", tempPath, err)
+	}
+
+	meta, err := generatedFileMetadata(tempPath, filename, "application/zip", srv.cfg.ChunkSize)
+	if err != nil {
+		t.Fatalf("generatedFileMetadata(%s): %v", tempPath, err)
+	}
+
+	sf, err := srv.storage.MoveToStorage(tempPath, fileID, meta, srv.cfg.TTLDefault, 0)
+	if err != nil {
+		t.Fatalf("MoveToStorage(%s): %v", fileID, err)
+	}
+	sf.ExpiresAt = now.Add(24 * time.Hour)
+	return sf
 }

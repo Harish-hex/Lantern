@@ -48,6 +48,8 @@ func New(cfg config.Config) (*Server, error) {
 		quit:    make(chan struct{}),
 	}
 
+	s.compute.SetArtifactAssembler(s.assembleComputeArtifacts)
+
 	if cfg.MaxDownloadConcurrency > 0 {
 		s.download = NewSemaphore(cfg.MaxDownloadConcurrency)
 	}

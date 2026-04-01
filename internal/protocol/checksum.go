@@ -50,6 +50,12 @@ func (s *SHA256Hasher) Update(data []byte) {
 	s.h.Write(data) // sha256.Write never returns an error
 }
 
+// Write makes SHA256Hasher implement io.Writer
+func (s *SHA256Hasher) Write(p []byte) (n int, err error) {
+	s.Update(p)
+	return len(p), nil
+}
+
 // Finalize returns the hex-encoded hash prefixed with "sha256:".
 func (s *SHA256Hasher) Finalize() string {
 	return fmt.Sprintf("sha256:%s", hex.EncodeToString(s.h.Sum(nil)))

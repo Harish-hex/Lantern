@@ -10,25 +10,33 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root {
-  --bg:       #0a0e1a;
-  --surface:  rgba(255,255,255,0.04);
-  --glass:    rgba(255,255,255,0.06);
-  --glass-hi: rgba(255,255,255,0.10);
-  --border:   rgba(255,255,255,0.08);
-  --border-hi:rgba(255,255,255,0.15);
-  --text:     #e8ecf1;
-  --text-dim: #7a8599;
-  --accent:   #f59e0b;
-  --accent-2: #fb923c;
-  --green:    #34d399;
-  --red:      #f87171;
-  --blue:     #60a5fa;
+  --bg:       #f2ead8;
+  --surface:  #ede3ce;
+  --glass:    #f4ecdc;
+  --glass-hi: #faf3e4;
+  --border:   rgba(26,20,16,0.14);
+  --border-hi:rgba(192,57,43,0.4);
+  --text:     #1a1410;
+  --text-dim: #6e5d52;
+  --accent:   #c0392b;
+  --accent-2: #9f2c20;
+  --green:    #b6483b;
+  --red:      #8d2a20;
+  --blue:     #d05948;
+  --accent-soft: rgba(192,57,43,0.1);
+  --accent-mid: rgba(192,57,43,0.18);
+  --surface-raised: #f8f0e1;
+  --line-soft: rgba(26,20,16,0.08);
+  --shadow-soft: 0 10px 30px rgba(26,20,16,0.1);
+  --shadow-strong: 0 20px 50px rgba(26,20,16,0.2);
+  --toast-bg: rgba(26,20,16,0.95);
   --radius:   12px;
   --radius-sm:8px;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font: 'Manrope', 'Segoe UI', sans-serif;
+  --font-heading: 'Fraunces', 'Georgia', serif;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;700&family=Manrope:wght@400;500;600;700&family=Noto+Serif+JP:wght@300&display=swap');
 
 html { font-size: 15px; }
 body {
@@ -39,13 +47,20 @@ body {
   overflow-x: hidden;
 }
 
-/* ── Ambient glow bg ──────────────────────────────────────── */
+/* ── Ambient paper bg ─────────────────────────────────────── */
 body::before {
   content: '';
   position: fixed; inset: 0;
   background:
-    radial-gradient(ellipse 600px 400px at 20% 10%, rgba(245,158,11,0.07), transparent),
-    radial-gradient(ellipse 500px 500px at 80% 80%, rgba(96,165,250,0.05), transparent);
+    radial-gradient(ellipse 680px 460px at 12% 8%, rgba(192,57,43,0.11), transparent),
+    radial-gradient(ellipse 560px 420px at 88% 84%, rgba(26,20,16,0.07), transparent),
+    repeating-linear-gradient(
+      0deg,
+      rgba(26,20,16,0.012),
+      rgba(26,20,16,0.012) 1px,
+      transparent 1px,
+      transparent 7px
+    );
   pointer-events: none;
   z-index: 0;
 }
@@ -53,9 +68,22 @@ body::before {
 /* ── Layout ───────────────────────────────────────────────── */
 .app {
   position: relative; z-index: 1;
-  max-width: 960px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 2.2rem 1.75rem 4rem;
+}
+.app::after {
+  content: '転送';
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.75rem;
+  font-family: 'Noto Serif JP', serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.2;
+  pointer-events: none;
 }
 
 /* ── Header ───────────────────────────────────────────────── */
@@ -63,27 +91,37 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.7rem;
 }
 header .logo {
-  font-size: 2.2rem;
-  line-height: 1;
+  width: 30px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  filter: drop-shadow(0 4px 10px rgba(26,20,16,0.15));
+}
+header .logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 header h1 {
-  font-size: 1.5rem;
+  font-family: var(--font-heading);
+  font-size: 1.72rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  letter-spacing: 0.01em;
+  color: var(--text);
 }
 header .badge {
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--accent);
-  border: 1px solid rgba(245,158,11,0.3);
+  color: #f8efe0;
+  background: var(--accent);
+  border: 1px solid var(--accent);
   padding: 2px 8px;
   border-radius: 4px;
   margin-left: auto;
@@ -105,18 +143,28 @@ header .badge {
   50%     { opacity: 0.4; }
 }
 
-/* ── Glass Card ───────────────────────────────────────────── */
+/* ── Paper Card ───────────────────────────────────────────── */
 .card {
-  background: var(--glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
 }
-.card:hover { border-color: var(--border-hi); }
+.card:hover { border-color: var(--border-hi); box-shadow: 0 14px 36px rgba(26,20,16,0.15); }
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(192,57,43,0.35), transparent);
+}
 .card-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -132,27 +180,41 @@ header .badge {
 
 /* ── Drop Zone ────────────────────────────────────────────── */
 .dropzone {
-  border: 2px dashed rgba(245,158,11,0.25);
+  --dz-stroke: rgba(192,57,43,0.34);
+  border: 2px solid transparent;
   border-radius: var(--radius);
   padding: 3rem 2rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all 0.22s ease;
   position: relative;
   overflow: hidden;
+  background: var(--surface-raised);
 }
 .dropzone::before {
   content: '';
   position: absolute; inset: 0;
-  background: rgba(245,158,11,0.02);
+  background: rgba(192,57,43,0.03);
   transition: background 0.25s;
 }
+.dropzone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, var(--dz-stroke) 0 4px, transparent 4px 10px) top/ calc(100% - 16px) 2px no-repeat,
+    repeating-linear-gradient(90deg, var(--dz-stroke) 0 4px, transparent 4px 10px) bottom/ calc(100% - 16px) 2px no-repeat,
+    repeating-linear-gradient(0deg, var(--dz-stroke) 0 4px, transparent 4px 10px) left/ 2px calc(100% - 16px) no-repeat,
+    repeating-linear-gradient(0deg, var(--dz-stroke) 0 4px, transparent 4px 10px) right/ 2px calc(100% - 16px) no-repeat;
+}
 .dropzone:hover, .dropzone.drag-over {
-  border-color: var(--accent);
+  --dz-stroke: rgba(192,57,43,0.75);
   transform: translateY(-2px);
 }
 .dropzone:hover::before, .dropzone.drag-over::before {
-  background: rgba(245,158,11,0.06);
+  background: rgba(192,57,43,0.08);
 }
 .dropzone .dz-icon {
   font-size: 2.5rem;
@@ -167,6 +229,21 @@ header .badge {
   font-size: 0.95rem;
   color: var(--text-dim);
   position: relative;
+}
+.dropzone .dz-jp-mark {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-family: 'Noto Serif JP', serif;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  opacity: 0.2;
+  pointer-events: none;
 }
 .dropzone .dz-text strong {
   color: var(--accent);
@@ -203,7 +280,7 @@ header .badge {
 .progress-item .bar-wrapper {
   width: 140px;
   height: 6px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(26,20,16,0.1);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -235,10 +312,29 @@ header .badge {
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem 0.25rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line-soft);
   animation: fadeInUp 0.3s ease;
   transition: background 0.15s;
   border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+.file-item::after {
+  content: '転';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'Noto Serif JP', serif;
+  font-size: 40px;
+  font-weight: 300;
+  color: var(--accent);
+  opacity: 0.06;
+  pointer-events: none;
+}
+.file-item > * {
+  position: relative;
+  z-index: 1;
 }
 .file-item:hover {
   background: var(--glass-hi);
@@ -248,7 +344,7 @@ header .badge {
 .file-icon {
   width: 36px; height: 36px;
   border-radius: var(--radius-sm);
-  background: rgba(245,158,11,0.1);
+  background: rgba(192,57,43,0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -261,7 +357,8 @@ header .badge {
 }
 .file-name {
   font-size: 0.88rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -294,29 +391,30 @@ header .badge {
   font-family: var(--font);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.16s;
   white-space: nowrap;
 }
 .btn:hover {
-  background: var(--glass-hi);
+  background: var(--surface);
   border-color: var(--border-hi);
   transform: translateY(-1px);
 }
 .btn-accent {
-  background: rgba(245,158,11,0.12);
-  border-color: rgba(245,158,11,0.25);
-  color: var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f8efe0;
+  box-shadow: 0 7px 16px rgba(192,57,43,0.22);
 }
 .btn-accent:hover {
-  background: rgba(245,158,11,0.2);
-  border-color: var(--accent);
+  background: var(--accent-2);
+  border-color: var(--accent-2);
 }
 .btn-danger {
   color: var(--red);
-  border-color: rgba(248,113,113,0.2);
+  border-color: rgba(141,42,32,0.32);
 }
 .btn-danger:hover {
-  background: rgba(248,113,113,0.1);
+  background: rgba(141,42,32,0.12);
   border-color: var(--red);
 }
 
@@ -333,17 +431,17 @@ header .badge {
 }
 .toast {
   pointer-events: auto;
-  background: rgba(15,20,35,0.92);
-  backdrop-filter: blur(16px);
+  background: var(--toast-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.6rem 1rem;
+  color: #f8efe0;
   font-size: 0.78rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   animation: toastIn 0.35s ease, toastOut 0.3s 4s ease forwards;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 12px 30px rgba(26,20,16,0.35);
   max-width: 340px;
 }
 @keyframes toastIn {
@@ -368,7 +466,7 @@ header .badge {
 .copy-tip {
   position: absolute;
   background: var(--accent);
-  color: #000;
+  color: #f8efe0;
   font-size: 0.65rem;
   font-weight: 600;
   padding: 2px 6px;
@@ -388,15 +486,43 @@ header .badge {
 }
 
 /* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .app { padding: 1.5rem 1.2rem 3rem; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .bucket-label { width: 120px; }
+  .tpl-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 640px) {
   .app { padding: 1.25rem 1rem; }
   .dropzone { padding: 2rem 1rem; }
+  .tab-bar {
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    flex: 0 0 auto;
+    min-width: 122px;
+    font-size: 0.7rem;
+    padding: 0.5rem 0.6rem;
+  }
   .file-item { flex-wrap: wrap; }
   .file-actions { width: 100%; justify-content: flex-end; margin-top: 0.5rem; }
-  .tab-bar { gap: 0; }
-  .tab-btn { font-size: 0.7rem; padding: 0.5rem 0.6rem; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
-  .wizard-body { padding: 1.5rem; }
+  .wizard-body { padding: 1rem; }
+  .wizard-footer { padding: 0.8rem 1rem; }
+  .bucket-label { width: 88px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ── Tab Navigation ──────────────────────────────────────── */
@@ -404,10 +530,11 @@ header .badge {
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.5rem;
-  background: var(--glass);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 4px;
+  box-shadow: var(--shadow-soft);
 }
 .tab-btn {
   flex: 1;
@@ -419,18 +546,52 @@ header .badge {
   font-family: var(--font);
   font-size: 0.78rem;
   font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 5px;
+  position: relative;
 }
-.tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.tab-btn:hover { color: var(--text); background: rgba(26,20,16,0.06); }
 .tab-btn.active {
   color: var(--accent);
-  background: rgba(245,158,11,0.1);
-  box-shadow: 0 1px 4px rgba(245,158,11,0.15);
+  background: rgba(192,57,43,0.08);
+  box-shadow: inset 0 0 0 1px rgba(192,57,43,0.14);
+  font-weight: 700;
+}
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 2px;
+  height: 2px;
+  background: #C0392B;
+  border-radius: 1px;
+  box-shadow: 0 1px 6px rgba(192,57,43,0.3);
+}
+.tab-icon {
+  width: 13px;
+  height: 13px;
+  font-size: 13px;
+  line-height: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(26,20,16,0.45);
+}
+.tab-icon svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+}
+.tab-btn.active .tab-icon {
+  color: #C0392B;
 }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; animation: fadeInUp 0.25s ease; }
@@ -449,6 +610,7 @@ header .badge {
   padding: 1.2rem;
   text-align: center;
   transition: border-color 0.2s, transform 0.2s;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
 }
 .stat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
 .stat-value {
@@ -478,21 +640,22 @@ header .badge {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.pill-queued    { background: rgba(96,165,250,0.15); color: var(--blue); }
-.pill-running   { background: rgba(245,158,11,0.15); color: var(--accent); }
-.pill-retrying  { background: rgba(251,146,60,0.15); color: var(--accent-2); }
-.pill-assembling{ background: rgba(167,139,250,0.15); color: #a78bfa; }
-.pill-done      { background: rgba(52,211,153,0.15); color: var(--green); }
-.pill-needs_attention,.pill-failed { background: rgba(248,113,113,0.15); color: var(--red); }
-.pill-idle     { background: rgba(122,133,153,0.15); color: var(--text-dim); }
-.pill-active   { background: rgba(52,211,153,0.15); color: var(--green); }
-.pill-quarantined { background: rgba(248,113,113,0.15); color: var(--red); }
-.pill-disabled { background: rgba(122,133,153,0.15); color: var(--text-dim); }
+.pill-queued    { background: rgba(208,89,72,0.14); color: var(--blue); }
+.pill-running   { background: rgba(192,57,43,0.14); color: var(--accent); }
+.pill-retrying  { background: rgba(159,44,32,0.16); color: var(--accent-2); }
+.pill-assembling{ background: rgba(182,72,59,0.16); color: var(--green); }
+.pill-done      { background: rgba(182,72,59,0.18); color: var(--green); }
+.pill-needs_attention,.pill-failed { background: rgba(141,42,32,0.16); color: var(--red); }
+.pill-idle     { background: rgba(110,93,82,0.14); color: var(--text-dim); }
+.pill-active   { background: rgba(192,57,43,0.18); color: var(--accent); }
+.pill-ready    { background: rgba(192,57,43,0.18); color: var(--accent); }
+.pill-quarantined { background: rgba(141,42,32,0.16); color: var(--red); }
+.pill-disabled { background: rgba(110,93,82,0.14); color: var(--text-dim); }
 
 /* ── Progress Bar ────────────────────────────────────────── */
-.pbar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+.pbar { height: 6px; background: rgba(26,20,16,0.1); border-radius: 3px; overflow: hidden; }
 .pbar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-.pbar-fill.done { background: linear-gradient(90deg, #34d399, #10b981); }
+.pbar-fill.done { background: linear-gradient(90deg, var(--green), var(--accent-2)); }
 
 /* ── Job / Worker Rows ───────────────────────────────────── */
 .row-item {
@@ -500,12 +663,12 @@ header .badge {
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem 0.5rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line-soft);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.15s;
   border-radius: var(--radius-sm);
 }
-.row-item:hover { background: var(--glass-hi); }
+.row-item:hover { background: var(--glass-hi); transform: translateY(-1px); }
 .row-item:last-child { border-bottom: none; }
 .row-icon { font-size: 1.3rem; flex-shrink: 0; width: 36px; text-align: center; }
 .row-body { flex: 1; min-width: 0; }
@@ -513,15 +676,54 @@ header .badge {
 .row-sub { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
 .row-detail { padding: 0 0.5rem 1rem; animation: fadeInUp 0.2s ease; }
-.row-detail-table { width: 100%; font-size: 0.78rem; border-collapse: collapse; }
+.row-detail-table { width: 100%; font-size: 0.78rem; border-collapse: separate; border-spacing: 0; }
 .row-detail-table th { text-align: left; color: var(--text-dim); font-weight: 600; padding: 0.4rem 0.5rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.row-detail-table td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--border); }
+.row-detail-table td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--line-soft); }
+.row-detail-table tbody tr:nth-child(odd) { background: rgba(26,20,16,0.03); }
+.template-metric-row {
+  border-bottom: 0.5px solid rgba(26,20,16,0.06);
+}
+.template-metric-row:last-child {
+  border-bottom: none;
+}
+
+.jp-overview-note {
+  margin-top: 0.15rem;
+  font-family: 'Noto Serif JP', serif;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  opacity: 0.22;
+}
+
+.jp-ready-note {
+  margin-left: 0.38rem;
+  font-family: 'Noto Serif JP', serif;
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.22;
+  vertical-align: middle;
+}
+
+.jp-inscription {
+  margin-top: 1rem;
+  text-align: right;
+  font-family: 'Noto Serif JP', serif;
+  font-size: 10px;
+  font-weight: 300;
+  color: var(--text);
+  opacity: 0.2;
+  letter-spacing: 0.05em;
+}
 
 /* ── Failure Buckets bar chart ────────────────────────────── */
 .bucket-chart { display: flex; flex-direction: column; gap: 0.5rem; }
 .bucket-row { display: flex; align-items: center; gap: 0.75rem; }
 .bucket-label { font-size: 0.72rem; width: 160px; text-align: right; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bucket-bar-wrap { flex: 1; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+.bucket-bar-wrap { flex: 1; height: 8px; background: rgba(26,20,16,0.08); border-radius: 4px; overflow: hidden; }
 .bucket-bar { height: 100%; border-radius: 4px; background: var(--red); transition: width 0.3s; }
 .bucket-val { font-size: 0.72rem; color: var(--text-dim); width: 30px; font-variant-numeric: tabular-nums; }
 
@@ -529,22 +731,22 @@ header .badge {
 .wizard-overlay {
   display: none;
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(26,20,16,0.45);
+  backdrop-filter: blur(4px);
   z-index: 500;
   align-items: center;
   justify-content: center;
 }
 .wizard-overlay.open { display: flex; }
 .wizard-box {
-  background: var(--bg);
+  background: var(--surface);
   border: 1px solid var(--border-hi);
   border-radius: var(--radius);
   width: 560px;
   max-width: 95vw;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-strong);
 }
 .wizard-header {
   display: flex;
@@ -599,7 +801,7 @@ header .badge {
   transition: all 0.2s;
 }
 .tpl-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
-.tpl-card.selected { border-color: var(--accent); background: rgba(245,158,11,0.06); }
+.tpl-card.selected { border-color: var(--accent); background: rgba(192,57,43,0.08); }
 .tpl-card .tpl-icon { font-size: 1.8rem; margin-bottom: 0.5rem; display: block; }
 .tpl-card .tpl-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 0.25rem; }
 .tpl-card .tpl-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.4; }
@@ -618,7 +820,7 @@ header .badge {
 .form-help { font-size: 0.68rem; color: var(--text-dim); margin-top: 0.2rem; opacity: 0.7; }
 .form-input, .form-textarea, .form-select {
   width: 100%;
-  background: var(--glass);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -632,7 +834,30 @@ header .badge {
   border-color: var(--accent);
 }
 .form-textarea { resize: vertical; min-height: 80px; }
+.form-textarea.has-dropzone { min-height: 110px; }
 .form-select { appearance: none; cursor: pointer; }
+.form-file-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+.wizard-dropzone {
+  flex: 1;
+  border: 1px dashed rgba(192,57,43,0.38);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  background: rgba(192,57,43,0.06);
+  transition: border-color 0.2s, background 0.2s;
+}
+.wizard-dropzone.drag-over {
+  border-color: var(--accent);
+  background: rgba(192,57,43,0.14);
+  color: var(--text);
+}
+.wizard-file-input { display: none; }
 .form-section-title {
   font-size: 0.72rem;
   font-weight: 700;
@@ -651,7 +876,7 @@ header .badge {
 }
 .form-toggle input[type="checkbox"] {
   appearance: none; width: 36px; height: 20px;
-  background: rgba(255,255,255,0.1);
+  background: rgba(26,20,16,0.2);
   border-radius: 10px;
   position: relative;
   cursor: pointer;
@@ -666,7 +891,7 @@ header .badge {
   top: 2px; left: 2px;
   transition: all 0.2s;
 }
-.form-toggle input[type="checkbox"]:checked { background: rgba(245,158,11,0.4); }
+.form-toggle input[type="checkbox"]:checked { background: rgba(192,57,43,0.45); }
 .form-toggle input[type="checkbox"]:checked::after { left: 18px; background: var(--accent); }
 
 /* ── Preflight Checks ────────────────────────────────────── */
@@ -686,17 +911,26 @@ header .badge {
   padding: 0.4rem 1rem;
   border-radius: 20px;
   margin-top: 1rem;
+  border: 1px solid var(--border);
 }
-.confidence-high   { background: rgba(52,211,153,0.15); color: var(--green); }
-.confidence-medium { background: rgba(245,158,11,0.15); color: var(--accent); }
-.confidence-low    { background: rgba(248,113,113,0.15); color: var(--red); }
+.confidence-high   { background: rgba(182,72,59,0.18); color: var(--green); }
+.confidence-medium { background: rgba(192,57,43,0.15); color: var(--accent); }
+.confidence-low    { background: rgba(141,42,32,0.15); color: var(--red); }
 
 /* ── Reliability Bar ─────────────────────────────────────── */
-.rel-bar { width: 60px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.rel-bar { width: 60px; height: 6px; background: rgba(26,20,16,0.1); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .rel-fill { height: 100%; border-radius: 3px; }
 .rel-high   .rel-fill { background: var(--green); }
 .rel-medium .rel-fill { background: var(--accent); }
 .rel-low    .rel-fill { background: var(--red); }
+
+code {
+  background: rgba(26,20,16,0.08);
+  border: 1px solid rgba(26,20,16,0.1);
+  border-radius: 6px;
+  padding: 0.05rem 0.34rem;
+  font-size: 0.82em;
+}
 </style>
 </head>
 <body>
@@ -705,7 +939,20 @@ header .badge {
 
   <!-- Header -->
   <header>
-    <span class="logo">🏮</span>
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 26 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="0" width="6" height="4" rx="1" fill="#1a1410" opacity="0.5"/>
+        <rect x="11" y="3" width="4" height="2" fill="#1a1410" opacity="0.3"/>
+        <ellipse cx="13" cy="18" rx="10" ry="13" fill="#C0392B" opacity="0.15"/>
+        <ellipse cx="13" cy="18" rx="10" ry="13" fill="none" stroke="#C0392B" stroke-width="1"/>
+        <line x1="13" y1="5" x2="13" y2="31" stroke="#C0392B" stroke-width="0.5" opacity="0.5"/>
+        <ellipse cx="13" cy="18" rx="10" ry="4" fill="none" stroke="#C0392B" stroke-width="0.5" opacity="0.4"/>
+        <ellipse cx="13" cy="12" rx="9" ry="3" fill="none" stroke="#C0392B" stroke-width="0.5" opacity="0.3"/>
+        <ellipse cx="13" cy="24" rx="9" ry="3" fill="none" stroke="#C0392B" stroke-width="0.5" opacity="0.3"/>
+        <rect x="10" y="29" width="6" height="3" rx="1" fill="#1a1410" opacity="0.4"/>
+        <ellipse cx="13" cy="18" rx="5" ry="7" fill="#C0392B" opacity="0.12"/>
+      </svg>
+    </span>
     <h1>Lantern</h1>
     <span class="badge">Dashboard</span>
     <div class="connection-dot disconnected" id="connDot" title="SSE connection"></div>
@@ -713,10 +960,11 @@ header .badge {
 
   <!-- Tab Bar -->
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="files">📁 Files</button>
-    <button class="tab-btn" data-tab="jobs">⚡ Jobs</button>
-    <button class="tab-btn" data-tab="workers">🖥 Workers</button>
-    <button class="tab-btn" data-tab="overview">📊 Overview</button>
+    <button class="tab-btn active" data-tab="files"><span class="tab-icon" aria-hidden="true">⌸</span><span>Files</span></button>
+    <button class="tab-btn" data-tab="artifacts"><span class="tab-icon" aria-hidden="true">⬡</span><span>Worker Artifacts</span></button>
+    <button class="tab-btn" data-tab="jobs"><span class="tab-icon" aria-hidden="true">⟳</span><span>Jobs</span></button>
+    <button class="tab-btn" data-tab="workers"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 13 13" xmlns="http://www.w3.org/2000/svg"><circle cx="3" cy="6.5" r="2" stroke-width="1.3"/><circle cx="10" cy="6.5" r="2" stroke-width="1.3"/><line x1="5" y1="6.5" x2="8" y2="6.5" stroke-width="1.1" stroke-linecap="round"/></svg></span><span>Workers</span></button>
+    <button class="tab-btn" data-tab="overview"><span class="tab-icon" aria-hidden="true">◎</span><span>Overview</span></button>
   </div>
 
   <!-- ═══════════ FILES TAB ═══════════ -->
@@ -726,19 +974,34 @@ header .badge {
       <div class="dropzone" id="dropzone">
         <span class="dz-icon">📁</span>
         <div class="dz-text"><strong>Drop files here</strong> or click to browse</div>
+        <span class="dz-jp-mark" aria-hidden="true">ファイル</span>
         <input type="file" id="fileInput" multiple>
       </div>
       <div class="upload-progress" id="uploadProgress"></div>
     </div>
     <div class="card">
       <div class="card-title">
-        <span class="icon">📂</span> Files
+        <span class="icon">📂</span> Uploaded Files
         <span id="fileCount" style="margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-dim)"></span>
       </div>
       <ul class="file-list" id="fileList"></ul>
       <div class="empty-state" id="emptyState">
         <span class="es-icon">✨</span>
         <p>No files yet. Upload something to get started.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ WORKER ARTIFACTS TAB ═══════════ -->
+  <div class="tab-panel" id="tab-artifacts">
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">🧰</span> Compute Artifacts
+      </div>
+      <ul class="file-list" id="artifactList"></ul>
+      <div class="empty-state" id="artifactsEmpty">
+        <span class="es-icon">🧰</span>
+        <p>No worker artifacts yet.</p>
       </div>
     </div>
   </div>
@@ -765,7 +1028,7 @@ header .badge {
       <div id="workerList"></div>
       <div class="empty-state" id="workersEmpty">
         <span class="es-icon">🖥</span>
-        <p>No workers connected. Start a worker with <code>lantern --worker</code></p>
+        <p>No workers connected. Start a worker with <code>lantern worker</code></p>
       </div>
     </div>
   </div>
@@ -790,6 +1053,8 @@ header .badge {
       <div id="templateMetrics"></div>
     </div>
   </div>
+
+  <div class="jp-inscription" aria-hidden="true">灯台下暗し</div>
 
 </div>
 
@@ -830,6 +1095,8 @@ header .badge {
   const fileList       = document.getElementById('fileList');
   const fileCount      = document.getElementById('fileCount');
   const emptyState     = document.getElementById('emptyState');
+  const artifactList   = document.getElementById('artifactList');
+  const artifactsEmpty = document.getElementById('artifactsEmpty');
   const toasts         = document.getElementById('toasts');
   const connDot        = document.getElementById('connDot');
 
@@ -866,6 +1133,7 @@ header .badge {
 
   function onTabChanged(tab) {
     if (computePollTimer) { clearInterval(computePollTimer); computePollTimer = null; }
+    if (tab === 'artifacts') { fetchArtifacts(); computePollTimer = setInterval(fetchArtifacts, 3000); }
     if (tab === 'jobs') { fetchJobs(); computePollTimer = setInterval(fetchJobs, 3000); }
     else if (tab === 'workers') { fetchWorkers(); computePollTimer = setInterval(fetchWorkers, 3000); }
     else if (tab === 'overview') { fetchOverview(); computePollTimer = setInterval(fetchOverview, 5000); }
@@ -978,6 +1246,49 @@ header .badge {
     }
   }
 
+  async function fetchArtifacts() {
+    try {
+      const res = await fetch('/api/compute/artifacts');
+      if (!res.ok) throw new Error(res.statusText);
+      const data = await res.json();
+      const artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+      renderArtifacts(artifacts);
+    } catch (e) {
+      console.error('fetch artifacts:', e);
+    }
+  }
+
+  function renderArtifacts(artifacts) {
+    artifactList.innerHTML = '';
+    artifactsEmpty.style.display = artifacts.length ? 'none' : 'block';
+
+    artifacts.forEach(a => {
+      const li = document.createElement('li');
+      li.className = 'file-item';
+      if (a.expired) li.style.opacity = '0.45';
+      const name = a.name || a.id;
+      const subtitle = `${a.template_name || a.template_id || 'compute'} • ${a.kind || 'artifact'} • ${(a.job_id || '').slice(0, 8)}`;
+      li.innerHTML = `
+        <div class="file-icon">${fileIcon(name)}</div>
+        <div class="file-info">
+          <div class="file-name" title="${name}">${name}</div>
+          <div class="file-meta">
+            <span>${fmtSize(a.size_bytes || 0)}</span>
+            <span>↓ ${a.downloads || 0}</span>
+            <span>${a.expired ? '⏱ expired' : subtitle}</span>
+          </div>
+        </div>
+        <div class="file-actions">
+          ${a.expired ? '' : `
+            <button class="btn btn-accent" data-action="download" data-id="${a.id}" data-name="${name}">⬇ Download</button>
+            <button class="btn" data-action="copy" data-id="${a.id}" title="Copy file ID">📋</button>
+          `}
+        </div>
+      `;
+      artifactList.appendChild(li);
+    });
+  }
+
   function wsURL(path) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${location.host}${path}`;
@@ -1032,7 +1343,7 @@ header .badge {
       const retries = new Map();
       let nextSeq = 1;
 
-      const finish = (ok, msg) => {
+      const finish = (ok, msg, fileID = '') => {
         if (completed) return;
         completed = true;
         if (openTimer) {
@@ -1047,7 +1358,7 @@ header .badge {
           iconEl.textContent = '✅';
           fill.style.width = '100%';
           pctEl.textContent = '100%';
-          fill.style.background = 'linear-gradient(90deg, #34d399, #10b981)';
+          fill.style.background = 'linear-gradient(90deg, var(--green), var(--accent-2))';
           toast('✅', msg || `Uploaded ${file.name}`);
           fetchFiles();
         } else {
@@ -1067,7 +1378,7 @@ header .badge {
         }, 2000);
 
         try { ws.close(); } catch (_) {}
-        resolve();
+        resolve(ok ? fileID : '');
       };
 
       async function sendChunk(seq, retransmit) {
@@ -1147,7 +1458,7 @@ header .badge {
           return;
         }
         if (msg.type === 'complete') {
-          finish(true, `Uploaded ${file.name}`);
+          finish(true, `Uploaded ${file.name}`, msg.file_id || '');
           return;
         }
 
@@ -1303,6 +1614,15 @@ header .badge {
     if (action === 'copy')     copyID(id, btn);
   });
 
+  artifactList.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id     = btn.dataset.id;
+    if (action === 'download') downloadFile(id, btn.dataset.name);
+    if (action === 'copy')     copyID(id, btn);
+  });
+
   // ── SSE (Server-Sent Events) ────────────────────────────────
 
   function connectSSE() {
@@ -1377,6 +1697,7 @@ header .badge {
         </div>
         <div class="row-actions">
           ${j.status === 'needs_attention' ? '<button class="btn btn-accent" data-action="retry-job" data-id="'+j.id+'">🔄 Retry</button>' : ''}
+          <button class="btn btn-danger" data-action="remove-job" data-id="${j.id}">🗑 Remove</button>
         </div>
       `;
       row.addEventListener('click', e => {
@@ -1407,15 +1728,6 @@ header .badge {
       const detail = document.createElement('div');
       detail.className = 'row-detail';
       const tasks = j.tasks || [];
-      const artifactsHTML = (j.artifacts && j.artifacts.length > 0) ? `
-        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-          <strong style="color:var(--text);font-size:0.8rem;display:block;margin-bottom:8px">Artifacts:</strong>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            ${j.artifacts.map(a => `<a class="btn btn-primary" href="/api/files/${a.id}" download="${a.name}" style="text-decoration:none;font-size:0.75rem;"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download ${a.name}</a>`).join('')}
-          </div>
-        </div>
-      ` : '';
-
       detail.innerHTML = `
         <table class="row-detail-table">
           <thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Attempt</th><th>Error</th></tr></thead>
@@ -1429,7 +1741,6 @@ header .badge {
             </tr>
           `).join('')}</tbody>
         </table>
-        ${artifactsHTML}
       `;
       item.after(detail);
       break;
@@ -1461,11 +1772,14 @@ header .badge {
       const row = document.createElement('div');
       row.className = 'row-item';
       const status = w.quarantined ? 'quarantined' : w.disabled ? 'disabled' : w.status || 'idle';
+      const statusBadge = status === 'active'
+        ? '<span class="pill pill-ready">ready</span><span class="jp-ready-note">準備完了</span>'
+        : jobStatusPill(status);
       const caps = (w.capabilities || []).join(', ') || 'none';
       row.innerHTML = `
         <div class="row-icon">🖥</div>
         <div class="row-body">
-          <div class="row-title">${w.id ? w.id.slice(0,12) : 'worker'} ${jobStatusPill(status)}</div>
+          <div class="row-title">${w.id ? w.id.slice(0,12) : 'worker'} ${statusBadge}</div>
           <div class="row-sub">
             <span>Caps: ${caps}</span>
             <span>Tasks: ${w.completed_tasks || 0}</span>
@@ -1477,6 +1791,7 @@ header .badge {
             ? '<button class="btn btn-accent" data-action="enable-worker" data-id="'+w.id+'">✓ Enable</button>'
             : '<button class="btn btn-danger" data-action="disable-worker" data-id="'+w.id+'">✕ Disable</button>'
           }
+          <button class="btn btn-danger" data-action="remove-worker" data-id="${w.id}">🗑 Remove</button>
         </div>
       `;
       workerListEl.appendChild(row);
@@ -1500,7 +1815,7 @@ header .badge {
       <div class="stat-card"><div class="stat-value" style="color:var(--accent)">${ov.active_jobs||0}</div><div class="stat-label">Active Jobs</div></div>
       <div class="stat-card"><div class="stat-value" style="color:var(--green)">${ov.completed_jobs||0}</div><div class="stat-label">Completed</div></div>
       <div class="stat-card"><div class="stat-value" style="color:var(--red)">${ov.needs_attention_jobs||0}</div><div class="stat-label">Needs Attention</div></div>
-      <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${rate}%</div><div class="stat-label">Completion Rate</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${rate}%</div><div class="stat-label">Completion Rate</div><div class="jp-overview-note">完了</div></div>
     `;
     const buckets = ov.failure_buckets || {};
     const bucketKeys = Object.keys(buckets);
@@ -1519,7 +1834,7 @@ header .badge {
     if (metrics.length) {
       templateMetrics.innerHTML = metrics.map(m => {
         const cr = Math.round((m.completion_rate||0)*100);
-        return `<div class="row-item" style="cursor:default"><div class="row-icon">${m.template_icon||'📋'}</div><div class="row-body"><div class="row-title">${m.template_name}</div><div class="row-sub"><span>Started: ${m.started_jobs}</span><span>Done: ${m.completed_jobs}</span><span>Rate: ${cr}%</span></div></div></div>`;
+        return `<div class="row-item template-metric-row" style="cursor:default"><div class="row-icon">${m.template_icon||'📋'}</div><div class="row-body"><div class="row-title">${m.template_name}</div><div class="row-sub"><span>Started: ${m.started_jobs}</span><span>Done: ${m.completed_jobs}</span><span>Rate: ${cr}%</span></div></div></div>`;
       }).join('');
     } else {
       templateMetrics.innerHTML = '<div class="empty-state"><p>No template data yet.</p></div>';
@@ -1538,6 +1853,16 @@ header .badge {
         const res = await fetch('/api/compute/jobs/' + id + '/retry', { method: 'POST' });
         toast(res.ok ? '✅' : '❌', res.ok ? 'Job retried' : 'Retry failed');
         if (res.ok) fetchJobs();
+      } else if (action === 'remove-job') {
+        if (!confirm('Remove this job and its task history from the coordinator?')) return;
+        const res = await fetch('/api/compute/jobs/' + id, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        toast(res.ok ? '✅' : '❌', res.ok ? `Removed job (${data.removed_tasks || 0} tasks)` : (data.error || 'Remove failed'));
+        if (res.ok) {
+          if (expandedJobId === id) expandedJobId = null;
+          fetchJobs();
+          fetchOverview();
+        }
       } else if (action === 'disable-worker') {
         const res = await fetch('/api/compute/workers/' + id + '/disable', { method: 'POST' });
         toast(res.ok ? '✅' : '❌', res.ok ? 'Worker disabled' : 'Disable failed');
@@ -1546,6 +1871,16 @@ header .badge {
         const res = await fetch('/api/compute/workers/' + id + '/enable', { method: 'POST' });
         toast(res.ok ? '✅' : '❌', res.ok ? 'Worker enabled' : 'Enable failed');
         if (res.ok) fetchWorkers();
+      } else if (action === 'remove-worker') {
+        if (!confirm('Remove this worker from coordinator state? Active leased tasks will be requeued.')) return;
+        const res = await fetch('/api/compute/workers/' + id, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        toast(res.ok ? '✅' : '❌', res.ok ? `Removed worker (${data.requeued_tasks || 0} tasks requeued)` : (data.error || 'Remove failed'));
+        if (res.ok) {
+          fetchWorkers();
+          fetchJobs();
+          fetchOverview();
+        }
       }
     } catch (_) { toast('❌', 'Action failed'); }
   });
@@ -1639,6 +1974,7 @@ header .badge {
       html += settingFields.map(f => renderField(f)).join('');
     }
     wizardContent.innerHTML = html;
+    bindWizardFileDrops();
   }
 
   function renderField(f) {
@@ -1648,9 +1984,16 @@ header .badge {
       input = `<label class="form-toggle"><input type="checkbox" data-field="${f.name}" ${val ? 'checked' : ''}><span>${f.label}</span></label>`;
     } else if (f.type === 'select' && f.options) {
       input = `<select class="form-select" data-field="${f.name}">${f.options.map(o => `<option value="${o}" ${o===String(val)?'selected':''}>${o}</option>`).join('')}</select>`;
-    } else if (f.type === 'string[]') {
+    } else if (f.type === 'string[]' || f.type === 'file[]') {
       const lines = Array.isArray(val) ? val.join('\n') : String(val);
-      input = `<textarea class="form-textarea" data-field="${f.name}" placeholder="${f.help||''}">${lines}</textarea>`;
+      input = `
+        <textarea class="form-textarea has-dropzone" data-field="${f.name}" placeholder="${f.help||''}">${lines}</textarea>
+        <div class="form-file-tools">
+          <div class="wizard-dropzone" data-drop-field="${f.name}">Drop files here to auto-fill this list</div>
+          <button type="button" class="btn" data-pick-field="${f.name}">Browse</button>
+          <input type="file" class="wizard-file-input" data-file-field="${f.name}" multiple>
+        </div>
+      `;
     } else if (f.type === 'int') {
       input = `<input type="number" class="form-input" data-field="${f.name}" value="${val}">`;
     } else {
@@ -1658,6 +2001,71 @@ header .badge {
     }
     const req = f.required ? ' *' : '';
     return `<div class="form-group"><label class="form-label">${f.label}${req}</label>${input}${f.help ? '<div class="form-help">'+f.help+'</div>' : ''}</div>`;
+  }
+
+  async function applyDroppedFilesToField(fieldName, fileList) {
+    const textarea = wizardContent.querySelector(`textarea[data-field="${fieldName}"]`);
+    if (!textarea) return;
+
+    const existing = textarea.value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const filesToUpload = Array.from(fileList || []).filter(Boolean);
+    const uploadedIDs = [];
+    for (const f of filesToUpload) {
+      try {
+        const fileID = await uploadFile(f);
+        if (fileID) uploadedIDs.push(fileID);
+      } catch (_) {}
+    }
+
+    const incoming = uploadedIDs.length
+      ? uploadedIDs
+      : filesToUpload
+          .map(f => (f && f.name ? f.name : ''))
+          .map(s => s.trim())
+          .filter(Boolean);
+
+    if (!incoming.length) return;
+    const merged = Array.from(new Set(existing.concat(incoming)));
+    textarea.value = merged.join('\n');
+  }
+
+  function bindWizardFileDrops() {
+    wizardContent.querySelectorAll('[data-pick-field]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fieldName = btn.dataset.pickField;
+        const input = wizardContent.querySelector(`[data-file-field="${fieldName}"]`);
+        if (input) input.click();
+      });
+    });
+
+    wizardContent.querySelectorAll('[data-file-field]').forEach(input => {
+      input.addEventListener('change', () => {
+        applyDroppedFilesToField(input.dataset.fileField, input.files);
+        input.value = '';
+      });
+    });
+
+    wizardContent.querySelectorAll('[data-drop-field]').forEach(zone => {
+      ['dragenter', 'dragover'].forEach(ev => {
+        zone.addEventListener(ev, e => {
+          e.preventDefault();
+          zone.classList.add('drag-over');
+        });
+      });
+      ['dragleave', 'drop'].forEach(ev => {
+        zone.addEventListener(ev, e => {
+          e.preventDefault();
+          zone.classList.remove('drag-over');
+        });
+      });
+      zone.addEventListener('drop', e => {
+        applyDroppedFilesToField(zone.dataset.dropField, e.dataTransfer ? e.dataTransfer.files : []);
+      });
+    });
   }
 
   function collectFormData() {
@@ -1669,7 +2077,7 @@ header .badge {
       if (!f) return;
       if (f.type === 'bool') wizFormData[f.name] = el.checked;
       else if (f.type === 'int') wizFormData[f.name] = parseInt(el.value) || 0;
-      else if (f.type === 'string[]') wizFormData[f.name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      else if (f.type === 'string[]' || f.type === 'file[]') wizFormData[f.name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
       else wizFormData[f.name] = el.value;
     });
   }
@@ -1691,13 +2099,13 @@ header .badge {
       const res = await fetch('/api/compute/jobs/preflight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template_id: wizSelected, inputs, settings })
+        body: JSON.stringify({ template: wizSelected, inputs, settings })
       });
       const data = await res.json();
-      const checks = data.checks || [];
+      const checks = (data.preflight && data.preflight.checks) || [];
       const allPass = checks.every(c => c.status === 'pass');
       const anyFail = checks.some(c => c.status === 'fail');
-      const confidence = anyFail ? 'low' : allPass ? 'high' : 'medium';
+      const confidence = String((data.preflight && data.preflight.confidence) || (anyFail ? 'Low' : allPass ? 'High' : 'Medium')).toLowerCase();
       const confLabel = confidence === 'high' ? '✅ High Confidence' : confidence === 'medium' ? '⚠️ Medium Confidence' : '❌ Low Confidence';
 
       document.getElementById('preflightResults').innerHTML = `
@@ -1727,7 +2135,7 @@ header .badge {
       const res = await fetch('/api/compute/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template_id: wizSelected, inputs, settings })
+        body: JSON.stringify({ template: wizSelected, inputs, settings })
       });
       if (res.ok) {
         toast('✅', 'Job submitted successfully!');

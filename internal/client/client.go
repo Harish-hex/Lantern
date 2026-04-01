@@ -3,7 +3,6 @@ package client
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -95,7 +94,7 @@ type Client struct {
 
 // New dials the server and performs the handshake.
 func New(host string, port int) (*Client, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", addr, err)
@@ -181,12 +180,11 @@ func (c *Client) sendFile(path string, index, total uint32, ttl, maxDownloads in
 	fileSize := stat.Size()
 	filename := filepath.Base(path)
 
-	// Compute full-file SHA-256 first
-	hasher := sha256.New()
+	hasher := protocol.NewSHA256Hasher()
 	if _, err := io.Copy(hasher, f); err != nil {
 		return "", fmt.Errorf("hash: %w", err)
 	}
-	checksum := hex.EncodeToString(hasher.Sum(nil))
+	checksum := hasher.Finalize()
 
 	// Seek back to beginning for transfer
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -195,7 +193,7 @@ func (c *Client) sendFile(path string, index, total uint32, ttl, maxDownloads in
 
 	// Calculate total chunks
 	totalChunks := uint32(fileSize / int64(c.chunkSize))
-	if fileSize%int64(c.chunkSize) != 0 {
+	if fileSize%int64(c.chunkSize) != 0 || fileSize == 0 {
 		totalChunks++
 	}
 
@@ -227,64 +225,57 @@ func (c *Client) sendFile(path string, index, total uint32, ttl, maxDownloads in
 	buf := make([]byte, c.chunkSize)
 	var seq uint32
 
-	for {
-		n, readErr := f.Read(buf)
-		if n > 0 {
-			seq++
-			flags := byte(0)
-			if readErr != nil { // last chunk (EOF)
-				flags |= protocol.FlagLastChunk
-			}
-
-			chunkData := make([]byte, n)
-			copy(chunkData, buf[:n])
-
-			var ctrl *protocol.ControlPayload
-			var err error
-
-			for attempt := 0; attempt <= maxRetries; attempt++ {
-				chdr := protocol.NewHeader(protocol.MsgChunk, flags, 0, seq, c.sessionID)
-				if err = protocol.WritePacket(c.conn, chdr, chunkData); err != nil {
-					return "", fmt.Errorf("send chunk %d (attempt %d): %w", seq, attempt+1, err)
-				}
-
-				// Wait for chunk ACK/NAK
-				ctrl, err = c.readACK()
-				if err != nil {
-					return "", fmt.Errorf("chunk %d: %w", seq, err)
-				}
-
-				if ctrl.Type != protocol.CtrlNAK {
-					break
-				}
-
-				// NAK: retry if we have attempts left
-				if attempt < maxRetries {
-					log.Printf("[client] chunk %d NAK (%s), retrying (%d/%d)...", seq, ctrl.Message, attempt+1, maxRetries)
-					time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
-					continue
-				}
-
-				return "", fmt.Errorf("chunk %d NAK after %d retries: %s", seq, maxRetries, ctrl.Message)
-			}
-
-			// Report progress
-			if progressFn != nil {
-				pct := float64(seq) / float64(totalChunks) * 100
-				progressFn(filename, pct)
-			}
-
-			// If this was the complete response, return the file ID
-			if ctrl.Type == protocol.CtrlComplete {
-				return ctrl.FileID, nil
-			}
+	for seq < totalChunks {
+		n, _ := io.ReadFull(f, buf)
+		seq++
+		flags := byte(0)
+		if seq == totalChunks {
+			flags |= protocol.FlagLastChunk
 		}
-		if readErr != nil {
-			break
+
+		chunkData := make([]byte, n)
+		copy(chunkData, buf[:n])
+
+		var ctrl *protocol.ControlPayload
+		var err error
+
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			chdr := protocol.NewHeader(protocol.MsgChunk, flags, 0, seq, c.sessionID)
+			if err = protocol.WritePacket(c.conn, chdr, chunkData); err != nil {
+				return "", fmt.Errorf("send chunk %d (attempt %d): %w", seq, attempt+1, err)
+			}
+
+			// Wait for chunk ACK/NAK
+			ctrl, err = c.readACK()
+			if err != nil {
+				return "", fmt.Errorf("chunk %d: %w", seq, err)
+			}
+
+			if ctrl.Type != protocol.CtrlNAK {
+				break
+			}
+
+			if attempt < maxRetries {
+				log.Printf("[client] chunk %d NAK (%s), retrying (%d/%d)...", seq, ctrl.Message, attempt+1, maxRetries)
+				time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+				continue
+			}
+
+			return "", fmt.Errorf("chunk %d NAK after %d retries: %s", seq, maxRetries, ctrl.Message)
+		}
+
+		if progressFn != nil {
+			pct := float64(seq) / float64(totalChunks) * 100
+			progressFn(filename, pct)
+		}
+
+		// If complete response returned early in the chunk ack
+		if ctrl.Type == protocol.CtrlComplete {
+			return ctrl.FileID, nil
 		}
 	}
 
-	// Wait for final completion message
+	// Wait for final completion message (if it wasn't bundled inside the last chunk ACK)
 	ctrl, err := c.readACK()
 	if err != nil {
 		return "", fmt.Errorf("wait completion: %w", err)
@@ -463,6 +454,22 @@ func (c *Client) FailComputeTask(workerID, taskID, failureMessage, checksum, tok
 		Message:  failureMessage,
 		Checksum: checksum,
 		Token:    token,
+	})
+	return err
+}
+
+// SendTaskLog streams a batch of log lines from the worker to the coordinator.
+// This is a best-effort fire-and-forget call; errors are logged but do not fail the task.
+func (c *Client) SendTaskLog(workerID, taskID, token string, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	_, err := c.sendControl(protocol.ControlPayload{
+		Type:     protocol.CtrlTaskLog,
+		WorkerID: workerID,
+		TaskID:   taskID,
+		Token:    token,
+		LogLines: lines,
 	})
 	return err
 }

@@ -10,6 +10,8 @@ package server
 //   internal/protocol and is not replicated here.
 
 import (
+	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/Harish-hex/Lantern/internal/config"
@@ -25,6 +27,21 @@ type Bridge struct {
 	cfg     config.Config
 	stats   *Stats
 	compute *Coordinator
+}
+
+type ComputeArtifactRecord struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Kind         string    `json:"kind"`
+	SizeBytes    int64     `json:"size_bytes"`
+	CreatedAt    time.Time `json:"created_at"`
+	JobID        string    `json:"job_id"`
+	JobStatus    string    `json:"job_status"`
+	TemplateID   string    `json:"template_id,omitempty"`
+	TemplateName string    `json:"template_name,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	Downloads    int32     `json:"downloads"`
+	Expired      bool      `json:"expired"`
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -65,6 +82,77 @@ func (b *Bridge) ComputeWorkers() []*ComputeWorker {
 	return b.compute.WorkersSnapshot()
 }
 
+func (b *Bridge) ComputeArtifactIDs() map[string]struct{} {
+	out := map[string]struct{}{}
+	if b.compute == nil {
+		return out
+	}
+	for _, job := range b.compute.JobsSnapshot() {
+		if job == nil {
+			continue
+		}
+		for _, artifact := range job.Artifacts {
+			if artifact.ID == "" {
+				continue
+			}
+			out[artifact.ID] = struct{}{}
+		}
+	}
+	return out
+}
+
+func (b *Bridge) ComputeArtifacts() []ComputeArtifactRecord {
+	if b.compute == nil {
+		return nil
+	}
+
+	jobs := b.compute.JobsSnapshot()
+	out := make([]ComputeArtifactRecord, 0)
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		for _, artifact := range job.Artifacts {
+			if artifact.ID == "" {
+				continue
+			}
+
+			record := ComputeArtifactRecord{
+				ID:           artifact.ID,
+				Name:         artifact.Name,
+				Kind:         artifact.Kind,
+				SizeBytes:    artifact.SizeBytes,
+				CreatedAt:    artifact.CreatedAt,
+				JobID:        job.ID,
+				JobStatus:    job.Status,
+				TemplateID:   job.TemplateID,
+				TemplateName: job.TemplateName,
+			}
+
+			if b.storage != nil {
+				if sf := b.storage.GetFile(artifact.ID); sf != nil {
+					record.Name = sf.Metadata.Filename
+					record.SizeBytes = sf.Metadata.Size
+					record.ExpiresAt = sf.ExpiresAt
+					record.Downloads = atomic.LoadInt32(&sf.DownloadCount)
+					record.Expired = sf.IsExpired()
+				}
+			}
+
+			out = append(out, record)
+		}
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+
+	return out
+}
+
 func (b *Bridge) ComputeTemplates() []ComputeTemplate {
 	return BuiltInComputeTemplates()
 }
@@ -97,6 +185,26 @@ func (b *Bridge) RetryComputeJob(jobID string, now time.Time) (*ComputeJob, erro
 	return b.compute.RetryJob(jobID, now)
 }
 
+func (b *Bridge) DeleteComputeJob(jobID string, now time.Time) (*ComputeJob, int, error) {
+	if b.compute == nil {
+		return nil, 0, nil
+	}
+
+	job, removedTasks, err := b.compute.DeleteJob(jobID, now)
+	if err != nil {
+		return nil, 0, err
+	}
+	if b.storage != nil && job != nil {
+		for _, artifact := range job.Artifacts {
+			if artifact.ID == "" {
+				continue
+			}
+			b.storage.DeleteFile(artifact.ID)
+		}
+	}
+	return job, removedTasks, nil
+}
+
 func (b *Bridge) RequeueStalledComputeTasks(now time.Time) ([]string, error) {
 	if b.compute == nil {
 		return nil, nil
@@ -109,6 +217,13 @@ func (b *Bridge) SetComputeWorkerDisabled(workerID string, disabled bool, reason
 		return nil, nil
 	}
 	return b.compute.SetWorkerDisabled(workerID, disabled, reason, now)
+}
+
+func (b *Bridge) DeleteComputeWorker(workerID string, now time.Time) (*ComputeWorker, int, error) {
+	if b.compute == nil {
+		return nil, 0, nil
+	}
+	return b.compute.DeleteWorker(workerID, now)
 }
 
 func (b *Bridge) Stats() StatsSnapshot {

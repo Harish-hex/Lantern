@@ -60,6 +60,7 @@ func New(bridge *server.Bridge) *Server {
 	mux.HandleFunc("/api/compute/jobs/preflight", ws.handleComputeJobPreflight)
 	mux.HandleFunc("/api/compute/jobs", ws.handleComputeJobs)
 	mux.HandleFunc("/api/compute/jobs/", ws.handleComputeJobByID)
+	mux.HandleFunc("/api/compute/artifacts", ws.handleComputeArtifacts)
 	mux.HandleFunc("/api/compute/workers", ws.handleComputeWorkers)
 	mux.HandleFunc("/api/compute/workers/", ws.handleComputeWorkerByID)
 	mux.HandleFunc("/api/upload", ws.handleUpload)
@@ -134,6 +135,7 @@ func (ws *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	files := ws.bridge.ListFiles()
+	computeArtifactIDs := ws.bridge.ComputeArtifactIDs()
 	type fileDTO struct {
 		ID           string    `json:"id"`
 		Name         string    `json:"name"`
@@ -145,6 +147,9 @@ func (ws *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	dtos := make([]fileDTO, 0, len(files))
 	for _, f := range files {
+		if _, isComputeArtifact := computeArtifactIDs[f.ID]; isComputeArtifact {
+			continue
+		}
 		dtos = append(dtos, fileDTO{
 			ID:           f.ID,
 			Name:         f.Metadata.Filename,
@@ -156,6 +161,17 @@ func (ws *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	jsonOK(w, dtos)
+}
+
+func (ws *Server) handleComputeArtifacts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+	jsonOK(w, map[string]any{"artifacts": ws.bridge.ComputeArtifacts()})
 }
 
 func (ws *Server) handleStats(w http.ResponseWriter, r *http.Request) {
@@ -376,6 +392,26 @@ func (ws *Server) handleComputeJobByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		if !ws.requireComputeWriteAuth(w, r) {
+			return
+		}
+
+		job, removedTasks, err := ws.bridge.DeleteComputeJob(jobID, time.Now())
+		if err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		jsonOK(w, map[string]any{
+			"job":               job,
+			"removed_tasks":     removedTasks,
+			"removed_artifacts": len(job.Artifacts),
+			"message":           "job deleted",
+		})
+		return
+	}
+
 	if len(parts) == 2 && parts[1] == "retry" && r.Method == http.MethodPost {
 		if !ws.requireComputeWriteAuth(w, r) {
 			return
@@ -452,11 +488,32 @@ func (ws *Server) handleComputeWorkers(w http.ResponseWriter, r *http.Request) {
 func (ws *Server) handleComputeWorkerByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/compute/workers/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
-		jsonErr(w, http.StatusBadRequest, "missing worker action")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		jsonErr(w, http.StatusBadRequest, "missing worker id")
 		return
 	}
-	if r.Method != http.MethodPost {
+	workerID := parts[0]
+
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		if !ws.requireComputeWriteAuth(w, r) {
+			return
+		}
+
+		worker, requeuedTasks, err := ws.bridge.DeleteComputeWorker(workerID, time.Now())
+		if err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		jsonOK(w, map[string]any{
+			"worker":         worker,
+			"requeued_tasks": requeuedTasks,
+			"message":        "worker deleted",
+		})
+		return
+	}
+
+	if len(parts) != 2 || r.Method != http.MethodPost {
 		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -478,7 +535,7 @@ func (ws *Server) handleComputeWorkerByID(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	worker, err := ws.bridge.SetComputeWorkerDisabled(parts[0], action == "disable", body.Reason, time.Now())
+	worker, err := ws.bridge.SetComputeWorkerDisabled(workerID, action == "disable", body.Reason, time.Now())
 	if err != nil {
 		jsonErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -486,7 +543,7 @@ func (ws *Server) handleComputeWorkerByID(w http.ResponseWriter, r *http.Request
 
 	jsonOK(w, map[string]any{
 		"worker":  worker,
-		"message": fmt.Sprintf("worker %s %sd", parts[0], action),
+		"message": fmt.Sprintf("worker %s %sd", workerID, action),
 	})
 }
 

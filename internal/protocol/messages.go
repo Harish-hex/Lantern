@@ -43,6 +43,7 @@ const (
 	CtrlTaskFail        = "TASK_FAIL"
 	CtrlTaskClaim       = "TASK_CLAIM"
 	CtrlTaskLease       = "TASK_LEASE"
+	CtrlTaskLog         = "TASK_LOG"
 	CtrlJobStatus       = "JOB_STATUS"
 )
 
@@ -92,4 +93,5 @@ type ControlPayload struct {
 	LeaseUntil   time.Time       `json:"lease_until,omitempty"`
 	Checksum     string          `json:"checksum,omitempty"`
 	Payload      json.RawMessage `json:"payload,omitempty"`
+	LogLines     []string        `json:"log_lines,omitempty"` // TASK_LOG: streamed log lines from worker
 }

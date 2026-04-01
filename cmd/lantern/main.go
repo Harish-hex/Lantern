@@ -27,6 +27,7 @@ import (
 	"github.com/Harish-hex/Lantern/internal/server"
 	"github.com/Harish-hex/Lantern/internal/web"
 	"github.com/Harish-hex/Lantern/internal/worker"
+	"github.com/Harish-hex/Lantern/internal/worker/toolchain"
 	qrterminal "github.com/mdp/qrterminal/v3"
 )
 
@@ -486,32 +487,48 @@ func cmdWorker(args []string) {
 	fs := flag.NewFlagSet("worker", flag.ExitOnError)
 	host := fs.String("host", "127.0.0.1", "server host")
 	port := fs.Int("port", 9723, "server port")
+	httpPort := fs.Int("http-port", 9724, "server HTTP port (for file downloads)")
 	workerID := fs.String("worker-id", "", "worker id")
 	capabilities := fs.String("capabilities", defaultWorkerCapabilityCSV(), "comma-separated capability list")
 	token := fs.String("token", "", "compute auth token (if required by server)")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "worker heartbeat interval")
 	poll := fs.Duration("poll", 2*time.Second, "task claim poll interval")
 	oneShot := fs.Bool("oneshot", false, "exit after one successful task")
+	taskTimeout := fs.Duration("task-timeout", 5*time.Minute, "maximum time for a single task execution")
+	taskZipThresholdMB := fs.Int64("task-zip-threshold-mb", 8, "zip task outputs only when total output exceeds this threshold (single-file small outputs upload directly)")
+	toolsDir := fs.String("tools-dir", "", "directory for auto-downloaded tool binaries (default: ~/.lantern/tools)")
+	autoDownload := fs.Bool("auto-download", false, "automatically download missing toolchain binaries")
 	fs.Parse(args)
 
 	if *workerID == "" {
 		*workerID = fmt.Sprintf("worker-%d", time.Now().Unix())
 	}
 
-	runnerCfg := worker.RunnerConfig{
-		Host:         *host,
-		Port:         *port,
-		WorkerID:     *workerID,
-		Token:        *token,
-		Heartbeat:    *heartbeat,
-		PollInterval: *poll,
-		OneShot:      *oneShot,
-		Registry:     worker.NewRegistry(),
-		// ToolchainManager can be setup here later
+	// Build the toolchain manager.
+	tcm := toolchain.NewManager(*toolsDir, nil)
+	if *autoDownload {
+		tcm.AutoDownload = true
+		log.Printf("[worker] toolchain auto-download enabled — tools dir: %s", tcm.ToolsDir)
 	}
 
-	// Register the available executors
+	runnerCfg := worker.RunnerConfig{
+		Host:                  *host,
+		Port:                  *port,
+		HTTPPort:              *httpPort,
+		WorkerID:              *workerID,
+		Token:                 *token,
+		Heartbeat:             *heartbeat,
+		PollInterval:          *poll,
+		OneShot:               *oneShot,
+		TaskTimeout:           *taskTimeout,
+		TaskZipThresholdBytes: *taskZipThresholdMB * 1024 * 1024,
+		Registry:              worker.NewRegistry(),
+		ToolchainManager:      tcm,
+	}
+
+	// Register all available executors.
 	runnerCfg.Registry.Register(worker.NewDataProcessingExecutor())
+	runnerCfg.Registry.Register(worker.NewImageBatchExecutor())
 
 	// Override capabilities if requested (usually we let registry define it)
 	if *capabilities != defaultWorkerCapabilityCSV() {

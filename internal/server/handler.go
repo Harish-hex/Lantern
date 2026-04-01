@@ -325,12 +325,14 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 		h.stats.RecordUpload(fileID, ft.Metadata.Filename, ft.Metadata.Size, chunkSize, ft.StartedAt)
 	}
 	log.Printf("[handler] session %x: file '%s' stored as %s", sid, ft.Metadata.Filename, fileID)
-	h.server.persistSession(sess)
 
 	h.sendControlMsg(conn, sid, 0, protocol.ControlPayload{
 		Type:   protocol.CtrlComplete,
 		FileID: fileID,
 	})
+
+	// Persist after responding so slow index writes don't stall client completion.
+	h.server.persistSession(sess)
 
 	// Check if all files in session are complete
 	h.checkSessionComplete(conn, sid, sess)
@@ -339,7 +341,6 @@ func (h *Handler) finalizeFile(conn net.Conn, sid [16]byte, sess *Session, ft *F
 // checkSessionComplete checks if all files have been transferred.
 func (h *Handler) checkSessionComplete(conn net.Conn, sid [16]byte, sess *Session) {
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 
 	allDone := true
 	var succeeded, failed []string
@@ -356,6 +357,7 @@ func (h *Handler) checkSessionComplete(conn net.Conn, sid [16]byte, sess *Sessio
 	}
 
 	if !allDone {
+		sess.mu.Unlock()
 		return
 	}
 
@@ -365,8 +367,17 @@ func (h *Handler) checkSessionComplete(conn net.Conn, sid [16]byte, sess *Sessio
 		sess.State = StateCompleted
 	}
 
-	releaseUploadSlot(sess, h.upload)
-	h.server.deleteSessionSnapshot(sess.ID)
+	heldSlot := sess.HoldsUploadSlot
+	if heldSlot {
+		sess.HoldsUploadSlot = false
+	}
+	sessID := sess.ID
+	sess.mu.Unlock()
+
+	if heldSlot && h.upload != nil {
+		h.upload.Release()
+	}
+	h.server.deleteSessionSnapshot(sessID)
 
 	log.Printf("[handler] session %x complete: %d succeeded, %d failed",
 		sid, len(succeeded), len(failed))
@@ -396,6 +407,8 @@ func (h *Handler) handleControl(conn net.Conn, hdr protocol.Header, payload []by
 		h.handleTaskResult(conn, hdr, ctrl)
 	case protocol.CtrlTaskFail:
 		h.handleTaskFail(conn, hdr, ctrl)
+	case protocol.CtrlTaskLog:
+		h.handleTaskLog(conn, hdr, ctrl)
 	case protocol.CtrlJobStatus:
 		h.handleJobStatus(conn, hdr, ctrl)
 	case protocol.CtrlWorkerHello:
@@ -476,9 +489,9 @@ func (h *Handler) handleTaskClaim(conn net.Conn, hdr protocol.Header, ctrl proto
 	}
 
 	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
-		Type:       protocol.CtrlTaskAssign,
-		WorkerID:   ctrl.WorkerID,
-		JobID:      task.JobID,
+		Type:         protocol.CtrlTaskAssign,
+		WorkerID:     ctrl.WorkerID,
+		JobID:        task.JobID,
 		TaskID:       task.ID,
 		Attempt:      task.Attempt,
 		LeaseUntil:   task.LeaseUntil,
@@ -578,6 +591,36 @@ func (h *Handler) handleTaskFail(conn net.Conn, hdr protocol.Header, ctrl protoc
 		TaskID:   task.ID,
 		Status:   task.Status,
 		Message:  taskFailMessage(task),
+	})
+}
+
+func (h *Handler) handleTaskLog(conn net.Conn, hdr protocol.Header, ctrl protocol.ControlPayload) {
+	if !h.cfg.ComputeEnabled || h.server.compute == nil {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
+		return
+	}
+	if !h.computeTokenValid(ctrl.Token) {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+		return
+	}
+	if ctrl.WorkerID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
+		return
+	}
+	if ctrl.TaskID == "" {
+		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing task_id")
+		return
+	}
+
+	if err := h.server.compute.AppendTaskLog(ctrl.WorkerID, ctrl.TaskID, ctrl.LogLines, time.Now()); err != nil {
+		// Log but don't error the worker — log ingestion failures are non-fatal.
+		log.Printf("[handler] task log append failed: worker=%s task=%s err=%v", ctrl.WorkerID, ctrl.TaskID, err)
+	}
+
+	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
+		Type:     protocol.CtrlACK,
+		WorkerID: ctrl.WorkerID,
+		TaskID:   ctrl.TaskID,
 	})
 }
 
