@@ -42,6 +42,9 @@ type RunnerConfig struct {
 	HTTPPort              int
 	WorkerID              string
 	Token                 string
+	EnrollCode            string
+	DeviceName            string
+	OSInfo                string
 	Heartbeat             time.Duration
 	PollInterval          time.Duration
 	OneShot               bool
@@ -87,8 +90,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	caps := r.cfg.Registry.Capabilities()
-	if err := c.RegisterWorker(r.cfg.WorkerID, r.cfg.Token, caps); err != nil {
+	ack, err := c.RegisterWorkerWithMetadata(r.cfg.WorkerID, r.cfg.Token, caps, r.cfg.EnrollCode, r.cfg.DeviceName, r.cfg.OSInfo)
+	if err != nil {
 		return fmt.Errorf("register worker: %w", err)
+	}
+	if r.cfg.Token == "" && ack != nil && ack.Token != "" {
+		r.cfg.Token = ack.Token
 	}
 	log.Printf("[worker %s] registered with capabilities: %v", r.cfg.WorkerID, caps)
 

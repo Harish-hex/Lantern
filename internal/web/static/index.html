@@ -1023,12 +1023,30 @@ code {
 
   <!-- ═══════════ WORKERS TAB ═══════════ -->
   <div class="tab-panel" id="tab-workers">
+    <div class="card" id="workerEnrollCard" style="margin-bottom:1rem">
+      <div class="card-title"><span class="icon">➕</span> Add Worker</div>
+      <p style="margin:0 0 .8rem;color:var(--text-dim)">Generate a short-lived pairing code, download a worker package, and onboard another device quickly.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-accent" id="btnGenerateEnroll">Generate Pairing Code</button>
+        <span id="enrollStatus" style="font-size:.8rem;color:var(--text-dim)"></span>
+      </div>
+      <div id="enrollResult" style="display:none;margin-top:.9rem;border-top:1px dashed rgba(255,255,255,.14);padding-top:.9rem"></div>
+    </div>
+    <div class="card" id="ocrToolCard" style="margin-bottom:1rem">
+      <div class="card-title"><span class="icon">🔤</span> OCR Tool Setup</div>
+      <p style="margin:0 0 .8rem;color:var(--text-dim)">Document OCR workers require the <strong>tesseract</strong> tool.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+        <button class="btn" id="btnCheckOCRTool">Check OCR Tool</button>
+        <span id="ocrToolStatus" style="font-size:.8rem;color:var(--text-dim)"></span>
+      </div>
+      <div id="ocrToolResult" style="display:none;margin-top:.9rem;border-top:1px dashed rgba(255,255,255,.14);padding-top:.9rem"></div>
+    </div>
     <div class="card-title"><span class="icon">🖥</span> Connected Workers</div>
     <div class="card" id="workerListCard">
       <div id="workerList"></div>
       <div class="empty-state" id="workersEmpty">
         <span class="es-icon">🖥</span>
-        <p>No workers connected. Start a worker with <code>lantern worker</code></p>
+		<p>No workers connected yet. Use Add Worker above to generate a pairing code.</p>
       </div>
     </div>
   </div>
@@ -1105,6 +1123,12 @@ code {
   const jobsEmpty      = document.getElementById('jobsEmpty');
   const workerListEl   = document.getElementById('workerList');
   const workersEmpty   = document.getElementById('workersEmpty');
+  const btnGenerateEnroll = document.getElementById('btnGenerateEnroll');
+  const enrollStatus = document.getElementById('enrollStatus');
+  const enrollResult = document.getElementById('enrollResult');
+  const btnCheckOCRTool = document.getElementById('btnCheckOCRTool');
+  const ocrToolStatus = document.getElementById('ocrToolStatus');
+  const ocrToolResult = document.getElementById('ocrToolResult');
   const overviewStats  = document.getElementById('overviewStats');
   const failureBuckets = document.getElementById('failureBuckets');
   const bucketsEmpty   = document.getElementById('bucketsEmpty');
@@ -1135,7 +1159,11 @@ code {
     if (computePollTimer) { clearInterval(computePollTimer); computePollTimer = null; }
     if (tab === 'artifacts') { fetchArtifacts(); computePollTimer = setInterval(fetchArtifacts, 3000); }
     if (tab === 'jobs') { fetchJobs(); computePollTimer = setInterval(fetchJobs, 3000); }
-    else if (tab === 'workers') { fetchWorkers(); computePollTimer = setInterval(fetchWorkers, 3000); }
+    else if (tab === 'workers') {
+      fetchWorkers();
+      fetchOCRToolStatus();
+      computePollTimer = setInterval(fetchWorkers, 3000);
+    }
     else if (tab === 'overview') { fetchOverview(); computePollTimer = setInterval(fetchOverview, 5000); }
   }
 
@@ -1776,11 +1804,13 @@ code {
         ? '<span class="pill pill-ready">ready</span><span class="jp-ready-note">準備完了</span>'
         : jobStatusPill(status);
       const caps = (w.capabilities || []).join(', ') || 'none';
+      const deviceLabel = w.device_name || w.os_info || w.registration_ip || 'unknown device';
       row.innerHTML = `
         <div class="row-icon">🖥</div>
         <div class="row-body">
           <div class="row-title">${w.id ? w.id.slice(0,12) : 'worker'} ${statusBadge}</div>
           <div class="row-sub">
+            <span>Device: ${deviceLabel}</span>
             <span>Caps: ${caps}</span>
             <span>Tasks: ${w.completed_tasks || 0}</span>
             <span>${reliabilityBar(w.reliability_score)}</span>
@@ -1796,6 +1826,120 @@ code {
       `;
       workerListEl.appendChild(row);
     });
+  }
+
+  async function generateEnrollmentCode() {
+    if (!btnGenerateEnroll) return;
+    btnGenerateEnroll.disabled = true;
+    enrollStatus.textContent = 'Generating…';
+    try {
+      const res = await fetch('/api/compute/enroll', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        enrollStatus.textContent = data.error || 'Failed to generate code';
+        return;
+      }
+
+      const enrollment = data.enrollment || {};
+      const quick = data.quick_start || {};
+      const installer = data.installer || {};
+      const windowsAvailable = !!installer.windows_available;
+      const windowsPkgAction = windowsAvailable && installer.windows_package_url
+        ? `<a class="btn btn-accent" style="display:inline-flex;margin-top:.35rem" href="${installer.windows_package_url}">⬇ Download Worker ZIP</a>`
+        : `<span style="display:inline-block;margin-top:.35rem;color:var(--red)">Worker package unavailable</span>`;
+      const windowsHint = windowsAvailable
+        ? 'Download the package and run START_WORKER.cmd on the Windows device.'
+        : `Build the Windows worker binary on the coordinator first: <code>${installer.build_command || 'scripts/build_worker_windows.sh'}</code>`;
+      enrollResult.style.display = 'block';
+      enrollStatus.textContent = 'Pairing code ready';
+      enrollResult.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.8rem">
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Pairing Code</div>
+            <div style="font-size:1.2rem;font-weight:800;letter-spacing:.08em">${enrollment.code || '-'}</div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Expires: ${enrollment.expires_at ? fmtTime(enrollment.expires_at) : 'soon'}</div>
+          </div>
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Windows Package (Recommended)</div>
+            ${windowsPkgAction}
+            <div style="font-size:.72rem;color:var(--text-dim);margin-top:.4rem">${windowsHint}</div>
+          </div>
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Worker Command (macOS/Linux)</div>
+            <code style="display:block;white-space:pre-wrap;word-break:break-word">${quick.mac_linux || ''}</code>
+          </div>
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Worker Command (Windows)</div>
+            <code style="display:block;white-space:pre-wrap;word-break:break-word">${quick.windows || ''}</code>
+          </div>
+        </div>
+        <div style="margin-top:.9rem;padding-top:.8rem;border-top:1px dashed rgba(255,255,255,.14)">
+          <div style="font-size:.8rem;color:var(--text-dim);margin-bottom:.3rem">Windows install steps</div>
+          <ol style="margin:0;padding-left:1.1rem;line-height:1.45;color:var(--text)">
+            <li>Download the worker ZIP and extract it on the target Windows machine.</li>
+            <li>Double-click <strong>START_WORKER.cmd</strong> in the extracted folder.</li>
+            <li>Enter a friendly device name when prompted.</li>
+            <li>Keep the worker window open while it is processing jobs.</li>
+          </ol>
+        </div>
+      `;
+      await fetchWorkers();
+    } catch (_) {
+      enrollStatus.textContent = 'Failed to generate code';
+    } finally {
+      btnGenerateEnroll.disabled = false;
+    }
+  }
+
+  if (btnGenerateEnroll) {
+    btnGenerateEnroll.addEventListener('click', generateEnrollmentCode);
+  }
+
+  async function fetchOCRToolStatus() {
+    if (!btnCheckOCRTool) return;
+    btnCheckOCRTool.disabled = true;
+    ocrToolStatus.textContent = 'Checking...';
+    try {
+      const res = await fetch('/api/compute/tools/ocr');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        ocrToolStatus.textContent = data.error || 'Unable to check OCR tool';
+        return;
+      }
+
+      const available = !!data.available;
+      const install = data.install || {};
+      ocrToolStatus.textContent = available
+        ? 'OCR tool detected on this machine'
+        : 'OCR tool missing on this machine';
+      ocrToolResult.style.display = 'block';
+      ocrToolResult.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.8rem">
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Status</div>
+            <div style="font-size:1rem;font-weight:700;${available ? 'color:var(--green)' : 'color:var(--red)'}">${available ? 'Ready' : 'Not Installed'}</div>
+            <div style="font-size:.72rem;color:var(--text-dim);margin-top:.2rem">${data.path || data.error || ''}</div>
+          </div>
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Install Scripts</div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
+              <a class="btn" href="${install.windows || '#'}">Windows</a>
+              <a class="btn" href="${install.linux || '#'}">Linux</a>
+              <a class="btn" href="${install.macos || '#'}">macOS</a>
+            </div>
+            <div style="font-size:.72rem;color:var(--text-dim);margin-top:.4rem">Run the downloaded script on each worker machine before starting OCR jobs.</div>
+          </div>
+        </div>
+      `;
+    } catch (_) {
+      ocrToolStatus.textContent = 'Unable to check OCR tool';
+    } finally {
+      btnCheckOCRTool.disabled = false;
+    }
+  }
+
+  if (btnCheckOCRTool) {
+    btnCheckOCRTool.addEventListener('click', fetchOCRToolStatus);
   }
 
   // ── Compute: Overview ─────────────────────────────────────

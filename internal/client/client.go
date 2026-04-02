@@ -398,13 +398,20 @@ func (c *Client) SubmitComputeTemplateJob(jobID, templateID, token string, input
 }
 
 func (c *Client) RegisterWorker(workerID, token string, capabilities []string) error {
-	_, err := c.sendControl(protocol.ControlPayload{
+	_, err := c.RegisterWorkerWithMetadata(workerID, token, capabilities, "", "", "")
+	return err
+}
+
+func (c *Client) RegisterWorkerWithMetadata(workerID, token string, capabilities []string, enrollCode, deviceName, osInfo string) (*protocol.ControlPayload, error) {
+	return c.sendControl(protocol.ControlPayload{
 		Type:         protocol.CtrlWorkerHello,
 		WorkerID:     workerID,
 		Token:        token,
 		Capabilities: capabilities,
+		EnrollCode:   enrollCode,
+		DeviceName:   deviceName,
+		OSInfo:       osInfo,
 	})
-	return err
 }
 
 func (c *Client) HeartbeatWorker(workerID, token string) error {
@@ -436,12 +443,12 @@ func (c *Client) ClaimComputeTask(workerID, token string) (*protocol.ControlPayl
 
 func (c *Client) CompleteComputeTask(workerID, taskID, artifactID, checksum, token string) error {
 	_, err := c.sendControl(protocol.ControlPayload{
-		Type:       protocol.CtrlTaskResult,
-		WorkerID:   workerID,
-		TaskID:     taskID,
-		FileID:     artifactID,
-		Checksum:   checksum,
-		Token:      token,
+		Type:     protocol.CtrlTaskResult,
+		WorkerID: workerID,
+		TaskID:   taskID,
+		FileID:   artifactID,
+		Checksum: checksum,
+		Token:    token,
 	})
 	return err
 }

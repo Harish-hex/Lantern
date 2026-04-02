@@ -84,6 +84,10 @@ type ControlPayload struct {
 	Failed     []string `json:"failed,omitempty"`      // For PARTIAL_COMPLETE
 
 	WorkerID     string          `json:"worker_id,omitempty"`
+	EnrollCode   string          `json:"enroll_code,omitempty"`
+	DeviceName   string          `json:"device_name,omitempty"`
+	OSInfo       string          `json:"os_info,omitempty"`
+	RemoteAddr   string          `json:"remote_addr,omitempty"`
 	JobID        string          `json:"job_id,omitempty"`
 	TaskID       string          `json:"task_id,omitempty"`
 	Token        string          `json:"token,omitempty"`

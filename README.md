@@ -112,6 +112,48 @@ go build -o bin/lantern ./cmd/lantern
 ./bin/lantern serve --http-port -1
 ```
 
+### Build Windows Worker `.exe` (for Dashboard Install)
+
+```bash
+# Build a Windows worker executable used by dashboard installer packaging
+scripts/build_worker_windows.sh
+```
+
+This generates:
+
+```text
+bin/lantern-worker-windows-amd64.exe
+```
+
+In the dashboard:
+
+1. Open the `Workers` tab.
+2. Click `Generate Pairing Code`.
+3. Click `Download Worker ZIP` (Windows package).
+4. On the target Windows machine, extract the zip and run `START_WORKER.cmd`.
+5. Enter a device name when prompted; the worker auto-registers using the enrollment code.
+
+### OCR Batch Setup (Tesseract)
+
+The `Document OCR Batch` compute template requires `tesseract` on worker machines.
+
+From the dashboard:
+
+1. Open the `Workers` tab.
+2. In `OCR Tool Setup`, click `Check OCR Tool`.
+3. Download the platform install script (Windows/Linux/macOS) and run it on each worker.
+4. Start or restart the worker and confirm OCR tool status is ready.
+
+You can also install manually:
+
+```bash
+# macOS
+brew install tesseract
+
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y tesseract-ocr
+```
+
 On startup, you'll see:
 
 ```

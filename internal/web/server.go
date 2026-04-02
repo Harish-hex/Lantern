@@ -15,6 +15,8 @@
 package web
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -22,7 +24,10 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -61,6 +66,11 @@ func New(bridge *server.Bridge) *Server {
 	mux.HandleFunc("/api/compute/jobs", ws.handleComputeJobs)
 	mux.HandleFunc("/api/compute/jobs/", ws.handleComputeJobByID)
 	mux.HandleFunc("/api/compute/artifacts", ws.handleComputeArtifacts)
+	mux.HandleFunc("/api/compute/enroll", ws.handleComputeEnroll)
+	mux.HandleFunc("/api/compute/enroll/", ws.handleComputeEnrollByCode)
+	mux.HandleFunc("/api/compute/installer/windows-amd64.exe", ws.handleWindowsWorkerBinary)
+	mux.HandleFunc("/api/compute/tools/ocr", ws.handleComputeOCRTool)
+	mux.HandleFunc("/api/compute/tools/ocr/install/", ws.handleComputeOCRToolInstall)
 	mux.HandleFunc("/api/compute/workers", ws.handleComputeWorkers)
 	mux.HandleFunc("/api/compute/workers/", ws.handleComputeWorkerByID)
 	mux.HandleFunc("/api/upload", ws.handleUpload)
@@ -468,6 +478,10 @@ func (ws *Server) handleComputeWorkers(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"id":                  worker.ID,
 			"status":              worker.Status,
+			"device_name":         worker.DeviceName,
+			"os_info":             worker.OSInfo,
+			"registration_ip":     worker.RegistrationIP,
+			"enrolled_at":         worker.EnrolledAt,
 			"last_seen":           worker.LastSeen,
 			"lease_until":         worker.LeaseUntil,
 			"capabilities":        worker.Capabilities,
@@ -483,6 +497,345 @@ func (ws *Server) handleComputeWorkers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOK(w, map[string]any{"workers": out})
+}
+
+func (ws *Server) handleComputeEnroll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeWriteAuth(w, r) {
+		return
+	}
+
+	host := hostFromRequest(r)
+	enrollment, err := ws.bridge.GenerateComputeEnrollment(host, time.Now())
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if enrollment == nil {
+		jsonErr(w, http.StatusServiceUnavailable, "compute coordinator unavailable")
+		return
+	}
+
+	_, windowsErr := locateWindowsWorkerBinary()
+	windowsAvailable := windowsErr == nil
+	installer := map[string]any{
+		"windows_available":   windowsAvailable,
+		"windows_binary_url":  "/api/compute/installer/windows-amd64.exe",
+		"windows_package_url": fmt.Sprintf("/api/compute/enroll/%s/package/windows-amd64", enrollment.Code),
+		"build_command":       "scripts/build_worker_windows.sh",
+	}
+	if windowsErr != nil {
+		installer["windows_error"] = windowsErr.Error()
+	}
+
+	jsonStatus(w, http.StatusCreated, map[string]any{
+		"enrollment": enrollment,
+		"quick_start": map[string]string{
+			"mac_linux": fmt.Sprintf("lantern worker --host %s --port %d --enroll-code %s --device-name my-device", enrollment.Host, enrollment.Port, enrollment.Code),
+			"windows":   fmt.Sprintf("lantern-worker.exe --host %s --port %d --enroll-code %s --device-name my-device", enrollment.Host, enrollment.Port, enrollment.Code),
+		},
+		"installer": installer,
+	})
+}
+
+func (ws *Server) handleComputeEnrollByCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/compute/enroll/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		jsonErr(w, http.StatusBadRequest, "missing enrollment code")
+		return
+	}
+	code := strings.TrimSpace(parts[0])
+
+	enrollment, ok := ws.bridge.ComputeEnrollment(code, time.Now())
+	if !ok || enrollment == nil {
+		jsonErr(w, http.StatusNotFound, "enrollment code not found")
+		return
+	}
+
+	if len(parts) == 3 && parts[1] == "package" && parts[2] == "windows-amd64" {
+		ws.serveWindowsWorkerPackage(w, enrollment)
+		return
+	}
+	if len(parts) > 1 {
+		jsonErr(w, http.StatusNotFound, "unsupported enrollment action")
+		return
+	}
+
+	jsonOK(w, map[string]any{"enrollment": enrollment})
+}
+
+func (ws *Server) handleWindowsWorkerBinary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	binaryPath, err := locateWindowsWorkerBinary()
+	if err != nil {
+		jsonErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
+	w.Header().Set("Content-Disposition", `attachment; filename="lantern-worker-windows-amd64.exe"`)
+	http.ServeFile(w, r, binaryPath)
+}
+
+func (ws *Server) handleComputeOCRTool(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	path, err := exec.LookPath("tesseract")
+	available := err == nil
+	out := map[string]any{
+		"tool":      "tesseract",
+		"available": available,
+		"path":      path,
+		"install": map[string]string{
+			"windows": "/api/compute/tools/ocr/install/windows",
+			"linux":   "/api/compute/tools/ocr/install/linux",
+			"macos":   "/api/compute/tools/ocr/install/macos",
+		},
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	jsonOK(w, out)
+}
+
+func (ws *Server) handleComputeOCRToolInstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	platform := strings.TrimPrefix(r.URL.Path, "/api/compute/tools/ocr/install/")
+	platform = strings.TrimSpace(strings.Trim(platform, "/"))
+	if platform == "" {
+		jsonErr(w, http.StatusBadRequest, "missing install platform")
+		return
+	}
+
+	filename, content, ok := ocrInstallScript(platform)
+	if !ok {
+		jsonErr(w, http.StatusNotFound, "unsupported platform")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	_, _ = w.Write([]byte(content))
+}
+
+func (ws *Server) serveWindowsWorkerPackage(w http.ResponseWriter, enrollment *server.ComputeEnrollment) {
+	if enrollment == nil {
+		jsonErr(w, http.StatusBadRequest, "missing enrollment")
+		return
+	}
+
+	binaryPath, err := locateWindowsWorkerBinary()
+	if err != nil {
+		jsonErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	binBytes, err := os.ReadFile(binaryPath)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "failed to read worker binary")
+		return
+	}
+
+	buf := &bytes.Buffer{}
+	zw := zip.NewWriter(buf)
+
+	exeWriter, err := zw.Create("lantern-worker.exe")
+	if err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to build package")
+		return
+	}
+	if _, err := exeWriter.Write(binBytes); err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to write package binary")
+		return
+	}
+
+	startScript := fmt.Sprintf(`@echo off
+setlocal
+set DEVICE_NAME=%%COMPUTERNAME%%
+set /p DEVICE_NAME=Device name [%%DEVICE_NAME%%]:
+if "%%DEVICE_NAME%%"=="" set DEVICE_NAME=%%COMPUTERNAME%%
+echo Starting Lantern Worker for %%DEVICE_NAME%% ...
+"%%~dp0lantern-worker.exe" worker --host %s --port %d --enroll-code %s --device-name "%%DEVICE_NAME%%"
+pause
+`, enrollment.Host, enrollment.Port, enrollment.Code)
+
+	cmdWriter, err := zw.Create("START_WORKER.cmd")
+	if err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to build package")
+		return
+	}
+	if _, err := cmdWriter.Write([]byte(startScript)); err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to write package script")
+		return
+	}
+
+	readme := fmt.Sprintf(`Lantern Worker Package (Windows)
+
+1. Extract this ZIP.
+2. Double-click START_WORKER.cmd.
+3. Enter a friendly device name when prompted.
+4. Keep that window open while this machine is acting as a worker.
+
+Enrollment code: %s
+Coordinator: %s:%d
+Code expires: %s
+`, enrollment.Code, enrollment.Host, enrollment.Port, enrollment.ExpiresAt.Format(time.RFC1123))
+	readmeWriter, err := zw.Create("README.txt")
+	if err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to build package")
+		return
+	}
+	if _, err := readmeWriter.Write([]byte(readme)); err != nil {
+		_ = zw.Close()
+		jsonErr(w, http.StatusInternalServerError, "failed to write package readme")
+		return
+	}
+
+	if err := zw.Close(); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "failed to finalize package")
+		return
+	}
+
+	filename := fmt.Sprintf("lantern-worker-%s-windows-amd64.zip", strings.ToLower(enrollment.Code))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	_, _ = w.Write(buf.Bytes())
+}
+
+func locateWindowsWorkerBinary() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("LANTERN_WORKER_WINDOWS_EXE")); override != "" {
+		if info, err := os.Stat(override); err == nil && !info.IsDir() {
+			return override, nil
+		}
+	}
+
+	candidates := []string{
+		filepath.Join("bin", "lantern-worker-windows-amd64.exe"),
+	}
+	if exePath, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exePath), "lantern-worker-windows-amd64.exe"))
+	}
+
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("windows worker binary not found; run scripts/build_worker_windows.sh")
+}
+
+func ocrInstallScript(platform string) (string, string, bool) {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "windows", "win", "win64":
+		return "install_ocr_windows.ps1", `# Lantern OCR Tool Installer (Windows)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+if (Get-Command winget -ErrorAction SilentlyContinue) {
+	winget install --id UB-Mannheim.TesseractOCR -e --accept-source-agreements --accept-package-agreements
+} elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+	choco install tesseract -y
+} else {
+	Write-Error "Install winget or chocolatey, then re-run this script."
+	exit 1
+}
+
+tesseract --version
+Write-Output "OCR tool installation completed."
+`, true
+	case "linux":
+		return "install_ocr_linux.sh", `#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v apt-get >/dev/null 2>&1; then
+	sudo apt-get update
+	sudo apt-get install -y tesseract-ocr
+elif command -v dnf >/dev/null 2>&1; then
+	sudo dnf install -y tesseract
+elif command -v yum >/dev/null 2>&1; then
+	sudo yum install -y tesseract
+elif command -v pacman >/dev/null 2>&1; then
+	sudo pacman -Sy --noconfirm tesseract
+else
+	echo "No supported package manager found. Install tesseract manually."
+	exit 1
+fi
+
+tesseract --version
+echo "OCR tool installation completed."
+`, true
+	case "macos", "darwin", "mac":
+		return "install_ocr_macos.sh", `#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v brew >/dev/null 2>&1; then
+	echo "Homebrew is required. Install Homebrew first: https://brew.sh"
+	exit 1
+fi
+
+brew install tesseract
+tesseract --version
+echo "OCR tool installation completed."
+`, true
+	default:
+		return "", "", false
+	}
+}
+
+func hostFromRequest(r *http.Request) string {
+	if r == nil {
+		return "127.0.0.1"
+	}
+	host := strings.TrimSpace(r.URL.Query().Get("worker_host"))
+	if host != "" {
+		return host
+	}
+	host = strings.TrimSpace(r.Host)
+	if host == "" {
+		return "127.0.0.1"
+	}
+	parsed, _, err := net.SplitHostPort(host)
+	if err == nil && parsed != "" {
+		return parsed
+	}
+	return host
 }
 
 func (ws *Server) handleComputeWorkerByID(w http.ResponseWriter, r *http.Request) {

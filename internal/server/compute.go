@@ -1,8 +1,10 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 	"sync"
@@ -58,6 +60,10 @@ type ComputeTask struct {
 type ComputeWorker struct {
 	ID                 string    `json:"id"`
 	Status             string    `json:"status"`
+	DeviceName         string    `json:"device_name,omitempty"`
+	OSInfo             string    `json:"os_info,omitempty"`
+	RegistrationIP     string    `json:"registration_ip,omitempty"`
+	EnrolledAt         time.Time `json:"enrolled_at,omitempty"`
 	LastSeen           time.Time `json:"last_seen"`
 	LeaseUntil         time.Time `json:"lease_until,omitempty"`
 	Capabilities       []string  `json:"capabilities,omitempty"`
@@ -67,6 +73,17 @@ type ComputeWorker struct {
 	ReliabilityScore   float64   `json:"reliability_score"`
 	Disabled           bool      `json:"disabled"`
 	DisabledReason     string    `json:"disabled_reason,omitempty"`
+}
+
+type ComputeEnrollment struct {
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	ClaimedAt time.Time `json:"claimed_at,omitempty"`
+	ClaimedBy string    `json:"claimed_by,omitempty"`
+	Host      string    `json:"host"`
+	Port      int       `json:"port"`
+	HTTPPort  int       `json:"http_port"`
 }
 
 type ComputeJobSubmit struct {
@@ -92,6 +109,7 @@ type Coordinator struct {
 	jobs              map[string]*ComputeJob
 	tasks             map[string]*ComputeTask
 	workers           map[string]*ComputeWorker
+	enrollments       map[string]*ComputeEnrollment
 	queue             []string
 	artifactAssembler ComputeArtifactAssembler
 }
@@ -109,13 +127,104 @@ type computeSubmissionBuild struct {
 
 func NewCoordinator(cfg config.Config, idx index.Store) *Coordinator {
 	return &Coordinator{
-		cfg:     cfg,
-		idx:     idx,
-		jobs:    make(map[string]*ComputeJob),
-		tasks:   make(map[string]*ComputeTask),
-		workers: make(map[string]*ComputeWorker),
-		queue:   make([]string, 0),
+		cfg:         cfg,
+		idx:         idx,
+		jobs:        make(map[string]*ComputeJob),
+		tasks:       make(map[string]*ComputeTask),
+		workers:     make(map[string]*ComputeWorker),
+		enrollments: make(map[string]*ComputeEnrollment),
+		queue:       make([]string, 0),
 	}
+}
+
+func (c *Coordinator) GenerateEnrollment(host string, now time.Time) (*ComputeEnrollment, error) {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return nil, fmt.Errorf("compute disabled")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cleanupExpiredEnrollmentsLocked(now)
+
+	for attempts := 0; attempts < 8; attempts++ {
+		code, err := randomEnrollmentCode(c.enrollmentCodeLengthLocked())
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := c.enrollments[code]; exists {
+			continue
+		}
+
+		record := &ComputeEnrollment{
+			Code:      code,
+			CreatedAt: now,
+			ExpiresAt: now.Add(c.enrollmentCodeTTLLocked()),
+			Host:      strings.TrimSpace(host),
+			Port:      c.cfg.Port,
+			HTTPPort:  c.cfg.HTTPPort,
+		}
+		if record.Host == "" {
+			record.Host = "127.0.0.1"
+		}
+		c.enrollments[code] = record
+		return c.cloneEnrollment(record), nil
+	}
+
+	return nil, fmt.Errorf("failed to allocate enrollment code")
+}
+
+func (c *Coordinator) Enrollment(code string, now time.Time) (*ComputeEnrollment, bool) {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return nil, false
+	}
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if code == "" {
+		return nil, false
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cleanupExpiredEnrollmentsLocked(now)
+	record := c.enrollments[code]
+	if record == nil {
+		return nil, false
+	}
+	return c.cloneEnrollment(record), true
+}
+
+func (c *Coordinator) ClaimEnrollment(workerID, code string, now time.Time) error {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return fmt.Errorf("compute disabled")
+	}
+	workerID = strings.TrimSpace(workerID)
+	if workerID == "" {
+		return fmt.Errorf("missing worker id")
+	}
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if code == "" {
+		return fmt.Errorf("missing enrollment code")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cleanupExpiredEnrollmentsLocked(now)
+	record := c.enrollments[code]
+	if record == nil {
+		return fmt.Errorf("invalid or expired enrollment code")
+	}
+	if !record.ClaimedAt.IsZero() {
+		if record.ClaimedBy == workerID {
+			return nil
+		}
+		return fmt.Errorf("enrollment code already claimed")
+	}
+
+	record.ClaimedAt = now
+	record.ClaimedBy = workerID
+	return nil
 }
 
 func (c *Coordinator) SetArtifactAssembler(assembler ComputeArtifactAssembler) {
@@ -287,6 +396,8 @@ func (c *Coordinator) ReapStaleWorkers(now time.Time) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.cleanupExpiredEnrollmentsLocked(now)
 
 	for _, worker := range c.workers {
 		if worker == nil {
@@ -475,6 +586,10 @@ func (c *Coordinator) FailTask(workerID, taskID, errMsg, checksum string, now ti
 }
 
 func (c *Coordinator) RegisterWorker(workerID string, capabilities []string, now time.Time) {
+	c.RegisterWorkerWithMetadata(workerID, capabilities, "", "", "", now)
+}
+
+func (c *Coordinator) RegisterWorkerWithMetadata(workerID string, capabilities []string, deviceName, osInfo, remoteAddr string, now time.Time) {
 	if c == nil || workerID == "" || !c.cfg.ComputeEnabled {
 		return
 	}
@@ -486,6 +601,18 @@ func (c *Coordinator) RegisterWorker(workerID string, capabilities []string, now
 	if worker == nil {
 		worker = &ComputeWorker{ID: workerID}
 		c.workers[workerID] = worker
+	}
+	if trimmed := strings.TrimSpace(deviceName); trimmed != "" {
+		worker.DeviceName = trimmed
+	}
+	if trimmed := strings.TrimSpace(osInfo); trimmed != "" {
+		worker.OSInfo = trimmed
+	}
+	if trimmed := strings.TrimSpace(remoteAddr); trimmed != "" {
+		worker.RegistrationIP = trimmed
+	}
+	if worker.EnrolledAt.IsZero() {
+		worker.EnrolledAt = now
 	}
 	worker.Capabilities = cloneStrings(capabilities)
 	worker.LastSeen = now
@@ -499,6 +626,56 @@ func (c *Coordinator) RegisterWorker(workerID string, capabilities []string, now
 	}
 	c.recomputeWorkerReliabilityLocked(worker)
 	c.saveWorkerLocked(worker)
+}
+
+func (c *Coordinator) enrollmentCodeLengthLocked() int {
+	if c.cfg.ComputeEnrollmentCodeLength > 0 {
+		return c.cfg.ComputeEnrollmentCodeLength
+	}
+	return 10
+}
+
+func (c *Coordinator) enrollmentCodeTTLLocked() time.Duration {
+	if c.cfg.ComputeEnrollmentCodeTTL > 0 {
+		return c.cfg.ComputeEnrollmentCodeTTL
+	}
+	if c.cfg.ComputeTokenTTL > 0 {
+		return c.cfg.ComputeTokenTTL
+	}
+	return 15 * time.Minute
+}
+
+func (c *Coordinator) cleanupExpiredEnrollmentsLocked(now time.Time) {
+	for code, record := range c.enrollments {
+		if record == nil || now.After(record.ExpiresAt) {
+			delete(c.enrollments, code)
+		}
+	}
+}
+
+func (c *Coordinator) cloneEnrollment(record *ComputeEnrollment) *ComputeEnrollment {
+	if record == nil {
+		return nil
+	}
+	cp := *record
+	return &cp
+}
+
+func randomEnrollmentCode(length int) (string, error) {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	if length <= 0 {
+		length = 10
+	}
+	buf := make([]byte, length)
+	max := big.NewInt(int64(len(alphabet)))
+	for i := range buf {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", fmt.Errorf("generate enrollment code: %w", err)
+		}
+		buf[i] = alphabet[n.Int64()]
+	}
+	return string(buf), nil
 }
 
 func (c *Coordinator) HeartbeatWorker(workerID string, now time.Time) bool {

@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -491,6 +492,8 @@ func cmdWorker(args []string) {
 	workerID := fs.String("worker-id", "", "worker id")
 	capabilities := fs.String("capabilities", defaultWorkerCapabilityCSV(), "comma-separated capability list")
 	token := fs.String("token", "", "compute auth token (if required by server)")
+	enrollCode := fs.String("enroll-code", "", "short-lived enrollment code generated from dashboard")
+	deviceName := fs.String("device-name", "", "human-friendly worker device name shown in dashboard")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "worker heartbeat interval")
 	poll := fs.Duration("poll", 2*time.Second, "task claim poll interval")
 	oneShot := fs.Bool("oneshot", false, "exit after one successful task")
@@ -517,6 +520,9 @@ func cmdWorker(args []string) {
 		HTTPPort:              *httpPort,
 		WorkerID:              *workerID,
 		Token:                 *token,
+		EnrollCode:            strings.TrimSpace(*enrollCode),
+		DeviceName:            strings.TrimSpace(*deviceName),
+		OSInfo:                runtime.GOOS,
 		Heartbeat:             *heartbeat,
 		PollInterval:          *poll,
 		OneShot:               *oneShot,
@@ -529,6 +535,7 @@ func cmdWorker(args []string) {
 	// Register all available executors.
 	runnerCfg.Registry.Register(worker.NewDataProcessingExecutor())
 	runnerCfg.Registry.Register(worker.NewImageBatchExecutor())
+	runnerCfg.Registry.Register(worker.NewDocumentOCRExecutor(tcm))
 
 	// Override capabilities if requested (usually we let registry define it)
 	if *capabilities != defaultWorkerCapabilityCSV() {

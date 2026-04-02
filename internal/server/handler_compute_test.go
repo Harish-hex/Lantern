@@ -153,6 +153,48 @@ func TestHandleJobStatusReturnsSnapshotPayload(t *testing.T) {
 	}
 }
 
+func TestHandleWorkerHelloAllowsEnrollmentCodeWhenTokenRequired(t *testing.T) {
+	h, sid, now := newComputeHandlerTest(t)
+	h.cfg.ComputeRequireToken = true
+	h.cfg.ComputeWorkerAuthToken = "test-enroll-token"
+
+	enrollment, err := h.server.compute.GenerateEnrollment("127.0.0.1", now)
+	if err != nil {
+		t.Fatalf("GenerateEnrollment: %v", err)
+	}
+
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+
+	go func() {
+		defer serverConn.Close()
+		h.handleWorkerHello(serverConn, protocol.NewHeader(protocol.MsgControl, 0, 0, 11, sid), protocol.ControlPayload{
+			Type:         protocol.CtrlWorkerHello,
+			WorkerID:     "worker-enrolled",
+			EnrollCode:   enrollment.Code,
+			DeviceName:   "Desk Mini",
+			OSInfo:       "darwin",
+			Capabilities: []string{"generic_v1"},
+		})
+	}()
+
+	resp := readControlPayload(t, clientConn)
+	if resp.Type != protocol.CtrlACK {
+		t.Fatalf("response type = %q, want ACK", resp.Type)
+	}
+	if resp.Token != "test-enroll-token" {
+		t.Fatalf("response token = %q, want test-enroll-token", resp.Token)
+	}
+
+	workers := h.server.compute.WorkersSnapshot()
+	if len(workers) != 1 {
+		t.Fatalf("workers len = %d, want 1", len(workers))
+	}
+	if workers[0].DeviceName != "Desk Mini" {
+		t.Fatalf("device name = %q, want Desk Mini", workers[0].DeviceName)
+	}
+}
+
 func newComputeHandlerTest(t *testing.T) (*Handler, [16]byte, time.Time) {
 	t.Helper()
 

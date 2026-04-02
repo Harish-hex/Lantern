@@ -1,6 +1,7 @@
 package web
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -30,6 +32,192 @@ func TestHandleComputeJobPreflightRequiresToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestHandleComputeEnrollRequiresToken(t *testing.T) {
+	ws, _, _ := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/compute/enroll", nil)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestHandleComputeEnrollCreateAndLookup(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/compute/enroll", nil)
+	createReq.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(createRec, createReq)
+
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+
+	var created struct {
+		Enrollment struct {
+			Code string `json:"code"`
+		} `json:"enrollment"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if created.Enrollment.Code == "" {
+		t.Fatal("expected enrollment code")
+	}
+
+	lookupRec := httptest.NewRecorder()
+	lookupReq := httptest.NewRequest(http.MethodGet, "/api/compute/enroll/"+created.Enrollment.Code, nil)
+	lookupReq.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(lookupRec, lookupReq)
+
+	if lookupRec.Code != http.StatusOK {
+		t.Fatalf("lookup status = %d, want %d body=%s", lookupRec.Code, http.StatusOK, lookupRec.Body.String())
+	}
+}
+
+func TestHandleComputeEnrollReturnsInstallerMetadata(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/compute/enroll", nil)
+	req.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var resp struct {
+		Enrollment struct {
+			Code string `json:"code"`
+		} `json:"enrollment"`
+		Installer map[string]any `json:"installer"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Enrollment.Code == "" {
+		t.Fatal("expected enrollment code")
+	}
+	url, _ := resp.Installer["windows_package_url"].(string)
+	if url == "" {
+		t.Fatal("expected windows_package_url")
+	}
+	if !strings.Contains(url, resp.Enrollment.Code) {
+		t.Fatalf("package url = %q does not include enrollment code %q", url, resp.Enrollment.Code)
+	}
+	if _, ok := resp.Installer["windows_available"].(bool); !ok {
+		t.Fatal("expected windows_available boolean in installer metadata")
+	}
+}
+
+func TestHandleComputeEnrollWindowsPackageIncludesFiles(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	fakeExe := filepath.Join(t.TempDir(), "lantern-worker-windows-amd64.exe")
+	if err := os.WriteFile(fakeExe, []byte("MZfake"), 0o644); err != nil {
+		t.Fatalf("write fake exe: %v", err)
+	}
+	t.Setenv("LANTERN_WORKER_WINDOWS_EXE", fakeExe)
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/compute/enroll", nil)
+	createReq.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(createRec, createReq)
+
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d body=%s", createRec.Code, http.StatusCreated, createRec.Body.String())
+	}
+
+	var created struct {
+		Enrollment struct {
+			Code string `json:"code"`
+		} `json:"enrollment"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	packageRec := httptest.NewRecorder()
+	packageReq := httptest.NewRequest(http.MethodGet, "/api/compute/enroll/"+created.Enrollment.Code+"/package/windows-amd64", nil)
+	packageReq.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(packageRec, packageReq)
+
+	if packageRec.Code != http.StatusOK {
+		t.Fatalf("package status = %d, want %d body=%s", packageRec.Code, http.StatusOK, packageRec.Body.String())
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(packageRec.Body.Bytes()), int64(packageRec.Body.Len()))
+	if err != nil {
+		t.Fatalf("read zip: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for _, f := range zr.File {
+		seen[f.Name] = true
+	}
+	if !seen["lantern-worker.exe"] {
+		t.Fatal("expected lantern-worker.exe in package")
+	}
+	if !seen["START_WORKER.cmd"] {
+		t.Fatal("expected START_WORKER.cmd in package")
+	}
+	if !seen["README.txt"] {
+		t.Fatal("expected README.txt in package")
+	}
+}
+
+func TestHandleComputeOCRToolStatus(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/compute/tools/ocr", nil)
+	req.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		Tool      string         `json:"tool"`
+		Available bool           `json:"available"`
+		Install   map[string]any `json:"install"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Tool != "tesseract" {
+		t.Fatalf("tool = %q, want tesseract", resp.Tool)
+	}
+	if _, ok := resp.Install["windows"].(string); !ok {
+		t.Fatal("expected install.windows")
+	}
+}
+
+func TestHandleComputeOCRToolInstallWindowsScript(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/compute/tools/ocr/install/windows", nil)
+	req.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "winget") {
+		t.Fatalf("windows install script missing winget command: %s", body)
+	}
+	if !strings.Contains(body, "tesseract") {
+		t.Fatalf("windows install script missing tesseract reference: %s", body)
 	}
 }
 

@@ -82,6 +82,20 @@ func (b *Bridge) ComputeWorkers() []*ComputeWorker {
 	return b.compute.WorkersSnapshot()
 }
 
+func (b *Bridge) GenerateComputeEnrollment(host string, now time.Time) (*ComputeEnrollment, error) {
+	if b.compute == nil {
+		return nil, nil
+	}
+	return b.compute.GenerateEnrollment(host, now)
+}
+
+func (b *Bridge) ComputeEnrollment(code string, now time.Time) (*ComputeEnrollment, bool) {
+	if b.compute == nil {
+		return nil, false
+	}
+	return b.compute.Enrollment(code, now)
+}
+
 func (b *Bridge) ComputeArtifactIDs() map[string]struct{} {
 	out := map[string]struct{}{}
 	if b.compute == nil {

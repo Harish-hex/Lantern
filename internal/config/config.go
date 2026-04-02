@@ -36,6 +36,8 @@ type Config struct {
 	MaxRetries   int // NAK retransmit ceiling per chunk
 
 	ComputeTokenTTL                  time.Duration
+	ComputeEnrollmentCodeTTL         time.Duration
+	ComputeEnrollmentCodeLength      int
 	ComputeLeaseTTL                  time.Duration
 	ComputeHeartbeat                 time.Duration
 	ComputeRetryMax                  int
@@ -81,6 +83,8 @@ func DefaultConfig() Config {
 		MaxRetries:   3,
 
 		ComputeTokenTTL:                  15 * time.Minute,
+		ComputeEnrollmentCodeTTL:         15 * time.Minute,
+		ComputeEnrollmentCodeLength:      10,
 		ComputeLeaseTTL:                  45 * time.Second,
 		ComputeHeartbeat:                 15 * time.Second,
 		ComputeRetryMax:                  3,

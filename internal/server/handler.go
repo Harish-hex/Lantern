@@ -505,20 +505,36 @@ func (h *Handler) handleWorkerHello(conn net.Conn, hdr protocol.Header, ctrl pro
 		h.sendError(conn, hdr.SessionID, hdr.Sequence, "compute coordinator disabled")
 		return
 	}
-	if !h.computeTokenValid(ctrl.Token) {
-		h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
-		return
-	}
 	if ctrl.WorkerID == "" {
 		h.sendError(conn, hdr.SessionID, hdr.Sequence, "missing worker_id")
 		return
 	}
 
-	h.server.compute.RegisterWorker(ctrl.WorkerID, ctrl.Capabilities, time.Now())
+	authed := h.computeTokenValid(ctrl.Token)
+	registeredViaEnrollment := false
+	now := time.Now()
+	if !authed {
+		if ctrl.EnrollCode == "" {
+			h.sendError(conn, hdr.SessionID, hdr.Sequence, "invalid compute token")
+			return
+		}
+		if err := h.server.compute.ClaimEnrollment(ctrl.WorkerID, ctrl.EnrollCode, now); err != nil {
+			h.sendError(conn, hdr.SessionID, hdr.Sequence, err.Error())
+			return
+		}
+		registeredViaEnrollment = true
+	}
+
+	h.server.compute.RegisterWorkerWithMetadata(ctrl.WorkerID, ctrl.Capabilities, ctrl.DeviceName, ctrl.OSInfo, remoteHost(conn.RemoteAddr()), now)
+	msg := "worker registered"
+	if registeredViaEnrollment {
+		msg = "worker enrolled and registered"
+	}
 	h.sendControlMsg(conn, hdr.SessionID, hdr.Sequence, protocol.ControlPayload{
 		Type:     protocol.CtrlACK,
 		WorkerID: ctrl.WorkerID,
-		Message:  "worker registered",
+		Token:    h.cfg.ComputeWorkerAuthToken,
+		Message:  msg,
 	})
 }
 
@@ -713,6 +729,17 @@ func (h *Handler) computeTokenValid(token string) bool {
 		return false
 	}
 	return token == h.cfg.ComputeWorkerAuthToken
+}
+
+func remoteHost(addr net.Addr) string {
+	if addr == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err == nil {
+		return host
+	}
+	return addr.String()
 }
 
 // handleDownload serves a stored file to the client.
