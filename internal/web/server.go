@@ -69,6 +69,8 @@ func New(bridge *server.Bridge) *Server {
 	mux.HandleFunc("/api/compute/enroll", ws.handleComputeEnroll)
 	mux.HandleFunc("/api/compute/enroll/", ws.handleComputeEnrollByCode)
 	mux.HandleFunc("/api/compute/installer/windows-amd64.exe", ws.handleWindowsWorkerBinary)
+	mux.HandleFunc("/api/compute/tools/render", ws.handleComputeRenderTool)
+	mux.HandleFunc("/api/compute/tools/render/install/", ws.handleComputeRenderToolInstall)
 	mux.HandleFunc("/api/compute/tools/ocr", ws.handleComputeOCRTool)
 	mux.HandleFunc("/api/compute/tools/ocr/install/", ws.handleComputeOCRToolInstall)
 	mux.HandleFunc("/api/compute/workers", ws.handleComputeWorkers)
@@ -146,28 +148,35 @@ func (ws *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	files := ws.bridge.ListFiles()
 	computeArtifactIDs := ws.bridge.ComputeArtifactIDs()
+	computeInputUsage := ws.bridge.ComputeInputUsageMap()
 	type fileDTO struct {
-		ID           string    `json:"id"`
-		Name         string    `json:"name"`
-		Size         int64     `json:"size"`
-		Downloads    int32     `json:"downloads"`
-		MaxDownloads int       `json:"max_downloads"`
-		ExpiresAt    time.Time `json:"expires_at"`
-		Expired      bool      `json:"expired"`
+		ID            string    `json:"id"`
+		Name          string    `json:"name"`
+		Size          int64     `json:"size"`
+		Downloads     int32     `json:"downloads"`
+		MaxDownloads  int       `json:"max_downloads"`
+		ExpiresAt     time.Time `json:"expires_at"`
+		Expired       bool      `json:"expired"`
+		ComputeInput  bool      `json:"compute_input,omitempty"`
+		InUseByJobIDs []string  `json:"in_use_by_job_ids,omitempty"`
 	}
 	dtos := make([]fileDTO, 0, len(files))
 	for _, f := range files {
 		if _, isComputeArtifact := computeArtifactIDs[f.ID]; isComputeArtifact {
 			continue
 		}
+		usage := computeInputUsage[f.ID]
+		inUse := len(usage) > 0
 		dtos = append(dtos, fileDTO{
-			ID:           f.ID,
-			Name:         f.Metadata.Filename,
-			Size:         f.Metadata.Size,
-			Downloads:    f.DownloadCount,
-			MaxDownloads: f.MaxDownloads,
-			ExpiresAt:    f.ExpiresAt,
-			Expired:      f.IsExpired(),
+			ID:            f.ID,
+			Name:          f.Metadata.Filename,
+			Size:          f.Metadata.Size,
+			Downloads:     f.DownloadCount,
+			MaxDownloads:  f.MaxDownloads,
+			ExpiresAt:     f.ExpiresAt,
+			Expired:       !inUse && f.IsExpired(),
+			ComputeInput:  inUse,
+			InUseByJobIDs: usage,
 		})
 	}
 	jsonOK(w, dtos)
@@ -623,6 +632,60 @@ func (ws *Server) handleComputeOCRTool(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, out)
 }
 
+func (ws *Server) handleComputeRenderTool(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	path, err := exec.LookPath("blender")
+	available := err == nil
+	out := map[string]any{
+		"tool":      "blender",
+		"available": available,
+		"path":      path,
+		"install": map[string]string{
+			"windows": "/api/compute/tools/render/install/windows",
+			"linux":   "/api/compute/tools/render/install/linux",
+			"macos":   "/api/compute/tools/render/install/macos",
+		},
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	jsonOK(w, out)
+}
+
+func (ws *Server) handleComputeRenderToolInstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !ws.requireComputeReadAuth(w, r) {
+		return
+	}
+
+	platform := strings.TrimPrefix(r.URL.Path, "/api/compute/tools/render/install/")
+	platform = strings.TrimSpace(strings.Trim(platform, "/"))
+	if platform == "" {
+		jsonErr(w, http.StatusBadRequest, "missing install platform")
+		return
+	}
+
+	filename, content, ok := renderInstallScript(platform)
+	if !ok {
+		jsonErr(w, http.StatusNotFound, "unsupported platform")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	_, _ = w.Write([]byte(content))
+}
+
 func (ws *Server) handleComputeOCRToolInstall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -819,6 +882,71 @@ echo "OCR tool installation completed."
 	}
 }
 
+	func renderInstallScript(platform string) (string, string, bool) {
+		switch strings.ToLower(strings.TrimSpace(platform)) {
+		case "windows", "win", "win64":
+			return "install_render_windows.ps1", `# Lantern Render Tool Installer (Windows)
+	Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+	if (Get-Command winget -ErrorAction SilentlyContinue) {
+		winget install --id BlenderFoundation.Blender -e --accept-source-agreements --accept-package-agreements
+	} elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+		choco install blender -y
+	} else {
+		Write-Error "Install winget or chocolatey, then re-run this script."
+		exit 1
+	}
+
+	if (Get-Command blender -ErrorAction SilentlyContinue) {
+		blender --version
+	} else {
+		Write-Output "Blender installed but not on PATH yet; restart your terminal and verify manually."
+	}
+	Write-Output "Render tool installation completed."
+	`, true
+		case "linux":
+			return "install_render_linux.sh", `#!/usr/bin/env bash
+	set -euo pipefail
+
+	if command -v apt-get >/dev/null 2>&1; then
+		sudo apt-get update
+		sudo apt-get install -y blender
+	elif command -v dnf >/dev/null 2>&1; then
+		sudo dnf install -y blender
+	elif command -v yum >/dev/null 2>&1; then
+		sudo yum install -y blender
+	elif command -v pacman >/dev/null 2>&1; then
+		sudo pacman -Sy --noconfirm blender
+	else
+		echo "No supported package manager found. Install blender manually."
+		exit 1
+	fi
+
+	blender --version || true
+	echo "Render tool installation completed."
+	`, true
+		case "macos", "darwin", "mac":
+			return "install_render_macos.sh", `#!/usr/bin/env bash
+	set -euo pipefail
+
+	if ! command -v brew >/dev/null 2>&1; then
+		echo "Homebrew is required. Install Homebrew first: https://brew.sh"
+		exit 1
+	fi
+
+	brew install --cask blender
+	if command -v blender >/dev/null 2>&1; then
+		blender --version
+	else
+		echo "Blender installed but not on PATH yet; launch once from Applications or add its binary to PATH."
+	fi
+	echo "Render tool installation completed."
+	`, true
+		default:
+			return "", "", false
+		}
+	}
+
 func hostFromRequest(r *http.Request) string {
 	if r == nil {
 		return "127.0.0.1"
@@ -943,7 +1071,8 @@ func (ws *Server) serveDownload(w http.ResponseWriter, r *http.Request, id strin
 		jsonErr(w, http.StatusNotFound, "file not found")
 		return
 	}
-	if sf.IsExpired() {
+	inUseByJobs := ws.bridge.ComputeInputUsage(id)
+	if sf.IsExpired() && len(inUseByJobs) == 0 {
 		jsonErr(w, http.StatusGone, "file expired")
 		return
 	}
@@ -953,7 +1082,9 @@ func (ws *Server) serveDownload(w http.ResponseWriter, r *http.Request, id strin
 	defer sf.DecrementActive()
 
 	// For HTTP, we approximate \"complete\" as ServeFile returning.
-	defer sf.IncrementDownloads()
+	if len(inUseByJobs) == 0 {
+		defer sf.IncrementDownloads()
+	}
 
 	ws.hub.publish(Event{Type: "download", FileID: id, Filename: sf.Metadata.Filename})
 
@@ -969,6 +1100,13 @@ func (ws *Server) serveDelete(w http.ResponseWriter, _ *http.Request, id string)
 	sf := ws.bridge.GetFile(id)
 	if sf == nil {
 		jsonErr(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if inUse := ws.bridge.ComputeInputUsage(id); len(inUse) > 0 {
+		jsonStatus(w, http.StatusConflict, map[string]any{
+			"error":             "file is currently referenced by compute jobs",
+			"in_use_by_job_ids": inUse,
+		})
 		return
 	}
 	ws.bridge.DeleteFile(id)

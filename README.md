@@ -154,6 +154,27 @@ brew install tesseract
 sudo apt-get update && sudo apt-get install -y tesseract-ocr
 ```
 
+### Video Render Setup (Blender)
+
+The `Render Frames` compute template requires `blender` on worker machines.
+
+From the dashboard:
+
+1. Open the `Workers` tab.
+2. In `Render Tool Setup`, click `Check Render Tool`.
+3. Download the platform install script (Windows/Linux/macOS) and run it on each render worker.
+4. Start or restart the worker and confirm render tool status is ready.
+
+You can also install manually:
+
+```bash
+# macOS
+brew install --cask blender
+
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y blender
+```
+
 On startup, you'll see:
 
 ```

@@ -399,6 +399,11 @@ header .badge {
   border-color: var(--border-hi);
   transform: translateY(-1px);
 }
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
 .btn-accent {
   background: var(--accent);
   border-color: var(--accent);
@@ -1041,6 +1046,15 @@ code {
       </div>
       <div id="ocrToolResult" style="display:none;margin-top:.9rem;border-top:1px dashed rgba(255,255,255,.14);padding-top:.9rem"></div>
     </div>
+    <div class="card" id="renderToolCard" style="margin-bottom:1rem">
+      <div class="card-title"><span class="icon">🎬</span> Render Tool Setup</div>
+      <p style="margin:0 0 .8rem;color:var(--text-dim)">Video rendering workers require the <strong>blender</strong> tool.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+        <button class="btn" id="btnCheckRenderTool">Check Render Tool</button>
+        <span id="renderToolStatus" style="font-size:.8rem;color:var(--text-dim)"></span>
+      </div>
+      <div id="renderToolResult" style="display:none;margin-top:.9rem;border-top:1px dashed rgba(255,255,255,.14);padding-top:.9rem"></div>
+    </div>
     <div class="card-title"><span class="icon">🖥</span> Connected Workers</div>
     <div class="card" id="workerListCard">
       <div id="workerList"></div>
@@ -1129,6 +1143,9 @@ code {
   const btnCheckOCRTool = document.getElementById('btnCheckOCRTool');
   const ocrToolStatus = document.getElementById('ocrToolStatus');
   const ocrToolResult = document.getElementById('ocrToolResult');
+  const btnCheckRenderTool = document.getElementById('btnCheckRenderTool');
+  const renderToolStatus = document.getElementById('renderToolStatus');
+  const renderToolResult = document.getElementById('renderToolResult');
   const overviewStats  = document.getElementById('overviewStats');
   const failureBuckets = document.getElementById('failureBuckets');
   const bucketsEmpty   = document.getElementById('bucketsEmpty');
@@ -1162,6 +1179,7 @@ code {
     else if (tab === 'workers') {
       fetchWorkers();
       fetchOCRToolStatus();
+      fetchRenderToolStatus();
       computePollTimer = setInterval(fetchWorkers, 3000);
     }
     else if (tab === 'overview') { fetchOverview(); computePollTimer = setInterval(fetchOverview, 5000); }
@@ -1232,6 +1250,7 @@ code {
       const li = document.createElement('li');
       li.className = 'file-item';
       if (f.expired) li.style.opacity = '0.45';
+      const pinned = !!f.compute_input && Array.isArray(f.in_use_by_job_ids) && f.in_use_by_job_ids.length > 0;
       li.innerHTML = `
         <div class="file-icon">${fileIcon(f.name)}</div>
         <div class="file-info">
@@ -1240,6 +1259,7 @@ code {
             <span>${fmtSize(f.size)}</span>
             <span>↓ ${f.downloads}${f.max_downloads > 0 ? '/' + f.max_downloads : ''}</span>
             <span>${f.expired ? '⏱ expired' : '⏱ ' + fmtTime(f.expires_at)}</span>
+            ${pinned ? `<span title="${f.in_use_by_job_ids.join(', ')}">📌 in use by ${f.in_use_by_job_ids.length} job(s)</span>` : ''}
           </div>
         </div>
         <div class="file-actions">
@@ -1251,7 +1271,7 @@ code {
               📋
             </button>
           `}
-          <button class="btn btn-danger" data-action="delete" data-id="${f.id}">
+          <button class="btn btn-danger" data-action="delete" data-id="${f.id}" ${pinned ? 'disabled title="Referenced by active compute jobs"' : ''}>
             ✕
           </button>
         </div>
@@ -1942,6 +1962,53 @@ code {
     btnCheckOCRTool.addEventListener('click', fetchOCRToolStatus);
   }
 
+  async function fetchRenderToolStatus() {
+    if (!btnCheckRenderTool) return;
+    btnCheckRenderTool.disabled = true;
+    renderToolStatus.textContent = 'Checking...';
+    try {
+      const res = await fetch('/api/compute/tools/render');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        renderToolStatus.textContent = data.error || 'Unable to check render tool';
+        return;
+      }
+
+      const available = !!data.available;
+      const install = data.install || {};
+      renderToolStatus.textContent = available
+        ? 'Render tool detected on this machine'
+        : 'Render tool missing on this machine';
+      renderToolResult.style.display = 'block';
+      renderToolResult.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.8rem">
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Status</div>
+            <div style="font-size:1rem;font-weight:700;${available ? 'color:var(--green)' : 'color:var(--red)'}">${available ? 'Ready' : 'Not Installed'}</div>
+            <div style="font-size:.72rem;color:var(--text-dim);margin-top:.2rem">${data.path || data.error || ''}</div>
+          </div>
+          <div>
+            <div style="font-size:.75rem;color:var(--text-dim)">Install Scripts</div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
+              <a class="btn" href="${install.windows || '#'}">Windows</a>
+              <a class="btn" href="${install.linux || '#'}">Linux</a>
+              <a class="btn" href="${install.macos || '#'}">macOS</a>
+            </div>
+            <div style="font-size:.72rem;color:var(--text-dim);margin-top:.4rem">Run the downloaded script on each render worker machine before starting video render jobs.</div>
+          </div>
+        </div>
+      `;
+    } catch (_) {
+      renderToolStatus.textContent = 'Unable to check render tool';
+    } finally {
+      btnCheckRenderTool.disabled = false;
+    }
+  }
+
+  if (btnCheckRenderTool) {
+    btnCheckRenderTool.addEventListener('click', fetchRenderToolStatus);
+  }
+
   // ── Compute: Overview ─────────────────────────────────────
 
   async function fetchOverview() {
@@ -2138,6 +2205,16 @@ code {
           <input type="file" class="wizard-file-input" data-file-field="${f.name}" multiple>
         </div>
       `;
+    } else if (f.type === 'file') {
+      const value = String(val || '');
+      input = `
+        <input type="text" class="form-input" data-field="${f.name}" value="${value}" placeholder="Upload or paste a file ID">
+        <div class="form-file-tools">
+          <div class="wizard-dropzone" data-drop-field="${f.name}">Drop one file here to auto-fill this field</div>
+          <button type="button" class="btn" data-pick-field="${f.name}">Browse</button>
+          <input type="file" class="wizard-file-input" data-file-field="${f.name}">
+        </div>
+      `;
     } else if (f.type === 'int') {
       input = `<input type="number" class="form-input" data-field="${f.name}" value="${val}">`;
     } else {
@@ -2148,13 +2225,16 @@ code {
   }
 
   async function applyDroppedFilesToField(fieldName, fileList) {
-    const textarea = wizardContent.querySelector(`textarea[data-field="${fieldName}"]`);
-    if (!textarea) return;
+    const targetField = wizardContent.querySelector(`[data-field="${fieldName}"]`);
+    if (!targetField) return;
 
-    const existing = textarea.value
-      .split('\n')
-      .map(s => s.trim())
-      .filter(Boolean);
+    const isListField = targetField.tagName === 'TEXTAREA';
+    const existing = isListField
+      ? targetField.value
+          .split('\n')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : (String(targetField.value || '').trim() ? [String(targetField.value || '').trim()] : []);
 
     const filesToUpload = Array.from(fileList || []).filter(Boolean);
     const uploadedIDs = [];
@@ -2173,8 +2253,12 @@ code {
           .filter(Boolean);
 
     if (!incoming.length) return;
-    const merged = Array.from(new Set(existing.concat(incoming)));
-    textarea.value = merged.join('\n');
+    if (isListField) {
+      const merged = Array.from(new Set(existing.concat(incoming)));
+      targetField.value = merged.join('\n');
+      return;
+    }
+    targetField.value = incoming[0];
   }
 
   function bindWizardFileDrops() {
@@ -2222,6 +2306,7 @@ code {
       if (f.type === 'bool') wizFormData[f.name] = el.checked;
       else if (f.type === 'int') wizFormData[f.name] = parseInt(el.value) || 0;
       else if (f.type === 'string[]' || f.type === 'file[]') wizFormData[f.name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      else if (f.type === 'file') wizFormData[f.name] = String(el.value || '').trim();
       else wizFormData[f.name] = el.value;
     });
   }

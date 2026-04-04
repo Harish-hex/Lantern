@@ -221,13 +221,61 @@ func TestHandleComputeOCRToolInstallWindowsScript(t *testing.T) {
 	}
 }
 
+func TestHandleComputeRenderToolStatus(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/compute/tools/render", nil)
+	req.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		Tool      string         `json:"tool"`
+		Available bool           `json:"available"`
+		Install   map[string]any `json:"install"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Tool != "blender" {
+		t.Fatalf("tool = %q, want blender", resp.Tool)
+	}
+	if _, ok := resp.Install["windows"].(string); !ok {
+		t.Fatal("expected install.windows")
+	}
+}
+
+func TestHandleComputeRenderToolInstallWindowsScript(t *testing.T) {
+	ws, _, token := newComputeWebTestServer(t, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/compute/tools/render/install/windows", nil)
+	req.Header.Set("X-Lantern-Compute-Token", token)
+	ws.httpSrv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "winget") {
+		t.Fatalf("windows install script missing winget command: %s", body)
+	}
+	if !strings.Contains(body, "Blender") {
+		t.Fatalf("windows install script missing blender reference: %s", body)
+	}
+}
+
 func TestHandleComputeJobPreflightReturnsReadyPreview(t *testing.T) {
 	ws, srv, token := newComputeWebTestServer(t, true)
 	registerTestWorker(t, srv, "worker-render-1", []string{"render_frames"}, time.Now().UTC())
 	registerTestWorker(t, srv, "worker-render-2", []string{"render_frames"}, time.Now().UTC())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs/preflight", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":true,"output_format":"png"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs/preflight", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene_bundle_id":"bundle-demo.zip","scene_file":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":false,"output_format":"png"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Lantern-Compute-Token", token)
 	ws.httpSrv.Handler.ServeHTTP(rec, req)
@@ -255,7 +303,7 @@ func TestHandleComputeJobPreflightReturnsNotReadyPreview(t *testing.T) {
 	ws, _, token := newComputeWebTestServer(t, true)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs/preflight", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":true,"output_format":"png"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs/preflight", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene_bundle_id":"bundle-demo.zip","scene_file":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":false,"output_format":"png"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Lantern-Compute-Token", token)
 	ws.httpSrv.Handler.ServeHTTP(rec, req)
@@ -300,7 +348,7 @@ func TestHandleComputeJobsSubmitStillReturnsCreated(t *testing.T) {
 	registerTestWorker(t, srv, "worker-render-submit-b", []string{"render_frames"}, time.Now().UTC())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":true,"output_format":"png"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/compute/jobs", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene_bundle_id":"bundle-demo.zip","scene_file":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":false,"output_format":"png"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Lantern-Compute-Token", token)
 	ws.httpSrv.Handler.ServeHTTP(rec, req)
@@ -315,7 +363,7 @@ func TestHandleComputeJobDeleteRemovesJob(t *testing.T) {
 	registerTestWorker(t, srv, "worker-delete-job", []string{"render_frames"}, time.Now().UTC())
 
 	createRec := httptest.NewRecorder()
-	createReq := httptest.NewRequest(http.MethodPost, "/api/compute/jobs", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":true,"output_format":"png"}}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/compute/jobs", bytes.NewBufferString(`{"template":"render_frames","inputs":{"scene_bundle_id":"bundle-demo.zip","scene_file":"demo.blend","frame_start":1,"frame_end":8,"chunk_size":4},"settings":{"stitched_output":false,"output_format":"png"}}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.Header.Set("X-Lantern-Compute-Token", token)
 	ws.httpSrv.Handler.ServeHTTP(createRec, createReq)
