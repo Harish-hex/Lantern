@@ -12,8 +12,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -36,23 +38,29 @@ const logBatchInterval = 500 * time.Millisecond
 // results are archived before upload.
 const defaultTaskZipThresholdBytes int64 = 8 * 1024 * 1024
 
+const defaultRenderTaskTimeout = 60 * time.Minute
+const defaultRenderBundleCacheBudgetBytes int64 = 20 * 1024 * 1024 * 1024
+
 type RunnerConfig struct {
-	Host                  string
-	Port                  int
-	HTTPPort              int
-	WorkerID              string
-	Token                 string
-	EnrollCode            string
-	DeviceName            string
-	OSInfo                string
-	Heartbeat             time.Duration
-	PollInterval          time.Duration
-	OneShot               bool
-	TaskTimeout           time.Duration
-	TaskZipThresholdBytes int64
-	WorkspaceDir          string
-	ToolchainManager      *toolchain.Manager
-	Registry              *Registry
+	Host                         string
+	Port                         int
+	HTTPPort                     int
+	WorkerID                     string
+	Token                        string
+	EnrollCode                   string
+	DeviceName                   string
+	OSInfo                       string
+	Heartbeat                    time.Duration
+	PollInterval                 time.Duration
+	OneShot                      bool
+	TaskTimeout                  time.Duration
+	TaskZipThresholdBytes        int64
+	RenderBundleCacheDir         string
+	RenderBundleCacheBudgetBytes int64
+	RenderDevice                 string
+	WorkspaceDir                 string
+	ToolchainManager             *toolchain.Manager
+	Registry                     *Registry
 }
 
 type Runner struct {
@@ -75,6 +83,19 @@ func NewRunner(cfg RunnerConfig) *Runner {
 	if cfg.TaskZipThresholdBytes <= 0 {
 		cfg.TaskZipThresholdBytes = defaultTaskZipThresholdBytes
 	}
+	if cfg.RenderBundleCacheDir == "" {
+		cfg.RenderBundleCacheDir = filepath.Join(cfg.WorkspaceDir, "render_bundle_cache")
+	}
+	if cfg.RenderBundleCacheBudgetBytes <= 0 {
+		cfg.RenderBundleCacheBudgetBytes = defaultRenderBundleCacheBudgetBytes
+	}
+	cfg.RenderDevice = strings.ToLower(strings.TrimSpace(cfg.RenderDevice))
+	if cfg.RenderDevice == "" {
+		cfg.RenderDevice = "auto"
+	}
+	if cfg.RenderDevice != "auto" && cfg.RenderDevice != "cpu" && cfg.RenderDevice != "gpu" {
+		cfg.RenderDevice = "auto"
+	}
 	return &Runner{cfg: cfg}
 }
 
@@ -88,8 +109,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err := os.MkdirAll(r.cfg.WorkspaceDir, 0755); err != nil {
 		return fmt.Errorf("create workspace dir: %w", err)
 	}
+	if err := os.MkdirAll(r.cfg.RenderBundleCacheDir, 0755); err != nil {
+		return fmt.Errorf("create render bundle cache dir: %w", err)
+	}
 
-	caps := r.cfg.Registry.Capabilities()
+	caps := r.computeWorkerCapabilities()
 	ack, err := c.RegisterWorkerWithMetadata(r.cfg.WorkerID, r.cfg.Token, caps, r.cfg.EnrollCode, r.cfg.DeviceName, r.cfg.OSInfo)
 	if err != nil {
 		return fmt.Errorf("register worker: %w", err)
@@ -169,8 +193,14 @@ func (r *Runner) executeTask(ctx context.Context, c *client.Client, claim *proto
 	}
 	defer os.RemoveAll(taskDir) // Cleanup
 
-	// 1b. Resolve file IDs in payload → download to inputDir, rewrite payload paths.
-	resolvedPayload, resolveErr := r.resolveFileInputs(claim.Payload, inputDir)
+	// 1b. Resolve input file IDs. render_frames uses a dedicated cache-aware resolver.
+	resolvedPayload := claim.Payload
+	var resolveErr error
+	if templateID == "render_frames" {
+		resolvedPayload, resolveErr = r.resolveRenderBundleInput(claim.Payload)
+	} else {
+		resolvedPayload, resolveErr = r.resolveFileInputs(claim.Payload, inputDir)
+	}
 	if resolveErr != nil {
 		log.Printf("[worker %s] file resolve warning: %v", r.cfg.WorkerID, resolveErr)
 		// Non-fatal — fall through with original payload; executor will try paths as-is.
@@ -181,8 +211,12 @@ func (r *Runner) executeTask(ctx context.Context, c *client.Client, claim *proto
 	// 2. Build a log writer that batches lines and sends them to the coordinator.
 	lw := newTaskLogWriter(c, r.cfg.WorkerID, claim.TaskID, r.cfg.Token)
 
-	// 3. Apply task timeout
-	taskCtx, cancel := context.WithTimeout(ctx, r.cfg.TaskTimeout)
+	// 3. Apply task timeout (render tasks default to a longer timeout).
+	taskTimeout := r.cfg.TaskTimeout
+	if templateID == "render_frames" && taskTimeout == defaultTaskTimeout {
+		taskTimeout = defaultRenderTaskTimeout
+	}
+	taskCtx, cancel := context.WithTimeout(ctx, taskTimeout)
 	defer cancel()
 
 	log.Printf("[worker %s] executing task %s using %s", r.cfg.WorkerID, claim.TaskID, templateID)
@@ -552,4 +586,238 @@ func (r *Runner) downloadFileHTTP(fileID, destDir string, httpPort int) (string,
 
 	log.Printf("[worker] downloaded file %s → %s", fileID, localPath)
 	return localPath, nil
+}
+
+type renderBundlePayload struct {
+	SceneBundleID string `json:"scene_bundle_id"`
+	SceneFile     string `json:"scene_file"`
+	Template      string `json:"template"`
+}
+
+func (r *Runner) computeWorkerCapabilities() []string {
+	base := append([]string(nil), r.cfg.Registry.Capabilities()...)
+	sort.Strings(base)
+
+	out := make([]string, 0, len(base)+4)
+	hasRender := false
+	for _, cap := range base {
+		if cap == "render_frames" {
+			hasRender = true
+			continue
+		}
+		out = append(out, cap)
+	}
+
+	if hasRender {
+		if blenderPath, err := r.probeTool("blender"); err == nil && strings.TrimSpace(blenderPath) != "" {
+			out = append(out, "render_frames", "tool:blender", "render_device:"+r.detectRenderDevice())
+			if ffmpegPath, ffmpegErr := r.probeTool("ffmpeg"); ffmpegErr == nil && strings.TrimSpace(ffmpegPath) != "" {
+				out = append(out, "tool:ffmpeg")
+			}
+		} else {
+			log.Printf("[worker %s] render_frames capability suppressed: blender not available", r.cfg.WorkerID)
+		}
+	}
+
+	if len(out) == 0 {
+		return []string{"generic_v1"}
+	}
+	return uniqueStringSlice(out)
+}
+
+func (r *Runner) probeTool(name string) (string, error) {
+	if r.cfg.ToolchainManager != nil {
+		if path, err := r.cfg.ToolchainManager.Probe(name); err == nil {
+			return path, nil
+		}
+	}
+	return exec.LookPath(name)
+}
+
+func (r *Runner) detectRenderDevice() string {
+	if r.cfg.RenderDevice == "cpu" || r.cfg.RenderDevice == "gpu" {
+		return r.cfg.RenderDevice
+	}
+	if _, err := exec.LookPath("nvidia-smi"); err == nil {
+		return "gpu"
+	}
+	return "cpu"
+}
+
+func uniqueStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func (r *Runner) resolveRenderBundleInput(payload json.RawMessage) (json.RawMessage, error) {
+	var cfg renderBundlePayload
+	if err := json.Unmarshal(payload, &cfg); err != nil {
+		return payload, err
+	}
+	cfg.SceneBundleID = strings.TrimSpace(cfg.SceneBundleID)
+	cfg.SceneFile = strings.TrimSpace(cfg.SceneFile)
+	if cfg.SceneBundleID == "" || cfg.SceneFile == "" {
+		return payload, fmt.Errorf("render payload missing scene_bundle_id or scene_file")
+	}
+
+	httpPort := r.cfg.HTTPPort
+	if httpPort == 0 {
+		httpPort = r.cfg.Port + 1
+	}
+
+	bundleDir := filepath.Join(r.cfg.RenderBundleCacheDir, cfg.SceneBundleID)
+	extractDir := filepath.Join(bundleDir, "extracted")
+	markerPath := filepath.Join(bundleDir, ".ready")
+	if _, err := os.Stat(markerPath); err != nil {
+		if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+			return payload, err
+		}
+		archivePath, err := r.downloadFileHTTP(cfg.SceneBundleID, bundleDir, httpPort)
+		if err != nil {
+			return payload, fmt.Errorf("download render bundle: %w", err)
+		}
+		if err := os.RemoveAll(extractDir); err != nil {
+			return payload, err
+		}
+		if err := os.MkdirAll(extractDir, 0o755); err != nil {
+			return payload, err
+		}
+		if err := extractZipArchive(archivePath, extractDir); err != nil {
+			return payload, fmt.Errorf("extract render bundle: %w", err)
+		}
+		_ = os.Remove(archivePath)
+		if err := os.WriteFile(markerPath, []byte(time.Now().UTC().Format(time.RFC3339)), 0o644); err != nil {
+			return payload, err
+		}
+	}
+
+	absoluteScenePath := filepath.Join(extractDir, filepath.FromSlash(cfg.SceneFile))
+	if _, err := os.Stat(absoluteScenePath); err != nil {
+		return payload, fmt.Errorf("scene_file not found in bundle: %s", cfg.SceneFile)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(payload, &obj); err != nil {
+		return payload, err
+	}
+	obj["scene_file"] = absoluteScenePath
+	obj["scene_bundle_dir"] = extractDir
+
+	r.enforceRenderCacheBudget()
+	return json.Marshal(obj)
+}
+
+func extractZipArchive(zipPath, destDir string) error {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		target := filepath.Join(destDir, filepath.Clean(f.Name))
+		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("zip entry escapes destination: %s", f.Name)
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.Create(target)
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, rc)
+		rc.Close()
+		closeErr := out.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	return nil
+}
+
+func (r *Runner) enforceRenderCacheBudget() {
+	budget := r.cfg.RenderBundleCacheBudgetBytes
+	if budget <= 0 {
+		return
+	}
+
+	type bundleInfo struct {
+		path    string
+		size    int64
+		modTime time.Time
+	}
+	bundles := make([]bundleInfo, 0)
+	var total int64
+
+	entries, err := os.ReadDir(r.cfg.RenderBundleCacheDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		bundlePath := filepath.Join(r.cfg.RenderBundleCacheDir, entry.Name())
+		sz := int64(0)
+		mod := time.Time{}
+		_ = filepath.Walk(bundlePath, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil || info == nil {
+				return nil
+			}
+			if info.ModTime().After(mod) {
+				mod = info.ModTime()
+			}
+			if !info.IsDir() {
+				sz += info.Size()
+			}
+			return nil
+		})
+		total += sz
+		bundles = append(bundles, bundleInfo{path: bundlePath, size: sz, modTime: mod})
+	}
+
+	if total <= budget {
+		return
+	}
+
+	sort.Slice(bundles, func(i, j int) bool { return bundles[i].modTime.Before(bundles[j].modTime) })
+	for _, bundle := range bundles {
+		if total <= budget {
+			break
+		}
+		if err := os.RemoveAll(bundle.path); err != nil {
+			continue
+		}
+		total -= bundle.size
+	}
 }

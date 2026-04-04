@@ -403,13 +403,13 @@ func TestCoordinatorTemplateSubmissionCompilesBuiltIns(t *testing.T) {
 
 	c := NewCoordinator(cfg, idx)
 	now := time.Now().UTC()
-	c.RegisterWorker("worker-render-a", []string{"render_frames"}, now)
-	c.RegisterWorker("worker-render-b", []string{"render_frames"}, now)
+	c.RegisterWorker("worker-render-a", []string{"render_frames", "render_device:cpu", "tool:blender"}, now)
+	c.RegisterWorker("worker-render-b", []string{"render_frames", "render_device:cpu", "tool:blender"}, now)
 
 	job, total, err := c.SubmitJob("job-template", ComputeJobSubmit{
 		Template: "render_frames",
-		Inputs:   json.RawMessage(`{"scene":"demo.blend","frame_start":1,"frame_end":7,"chunk_size":3}`),
-		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+		Inputs:   json.RawMessage(`{"scene_bundle_id":"bundle-demo.zip","scene_file":"demo.blend","frame_start":1,"frame_end":7,"chunk_size":3}`),
+		Settings: json.RawMessage(`{"stitched_output":false,"output_format":"png"}`),
 	}, now)
 	if err != nil {
 		t.Fatalf("SubmitJob(template): %v", err)
@@ -436,13 +436,13 @@ func TestCoordinatorPreviewTemplateSubmissionDoesNotPersistState(t *testing.T) {
 
 	c := NewCoordinator(cfg, idx)
 	now := time.Now().UTC()
-	c.RegisterWorker("worker-preview-a", []string{"render_frames"}, now)
-	c.RegisterWorker("worker-preview-b", []string{"render_frames"}, now)
+	c.RegisterWorker("worker-preview-a", []string{"render_frames", "render_device:cpu", "tool:blender"}, now)
+	c.RegisterWorker("worker-preview-b", []string{"render_frames", "render_device:cpu", "tool:blender"}, now)
 
 	preview, err := c.PreviewJob(ComputeJobSubmit{
 		Template: "render_frames",
-		Inputs:   json.RawMessage(`{"scene":"preview.blend","frame_start":1,"frame_end":10,"chunk_size":5}`),
-		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+		Inputs:   json.RawMessage(`{"scene_bundle_id":"bundle-preview.zip","scene_file":"preview.blend","frame_start":1,"frame_end":10,"chunk_size":5}`),
+		Settings: json.RawMessage(`{"stitched_output":false,"output_format":"png"}`),
 	}, now)
 	if err != nil {
 		t.Fatalf("PreviewJob: %v", err)
@@ -475,8 +475,8 @@ func TestCoordinatorPreviewTemplateSubmissionAllowsNotReadyPreflight(t *testing.
 
 	preview, err := c.PreviewJob(ComputeJobSubmit{
 		Template: "render_frames",
-		Inputs:   json.RawMessage(`{"scene":"preview.blend","frame_start":1,"frame_end":5,"chunk_size":2}`),
-		Settings: json.RawMessage(`{"stitched_output":true,"output_format":"png"}`),
+		Inputs:   json.RawMessage(`{"scene_bundle_id":"bundle-preview.zip","scene_file":"preview.blend","frame_start":1,"frame_end":5,"chunk_size":2}`),
+		Settings: json.RawMessage(`{"stitched_output":false,"output_format":"png"}`),
 	}, now)
 	if err != nil {
 		t.Fatalf("PreviewJob: %v", err)

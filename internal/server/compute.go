@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -15,27 +16,29 @@ import (
 )
 
 type ComputeJob struct {
-	ID                   string            `json:"id"`
-	Type                 string            `json:"type"`
-	TemplateID           string            `json:"template_id,omitempty"`
-	TemplateName         string            `json:"template_name,omitempty"`
-	OutputKind           string            `json:"output_kind,omitempty"`
-	Status               string            `json:"status"`
-	Confidence           string            `json:"confidence,omitempty"`
-	NeedsAttentionReason string            `json:"needs_attention_reason,omitempty"`
-	FailureCategory      string            `json:"failure_category,omitempty"`
-	CreatedAt            time.Time         `json:"created_at"`
-	UpdatedAt            time.Time         `json:"updated_at"`
-	StartedAt            time.Time         `json:"started_at,omitempty"`
-	FinishedAt           time.Time         `json:"finished_at,omitempty"`
-	TotalTasks           int               `json:"total_tasks"`
-	CompletedTasks       int               `json:"completed_tasks"`
-	FailedTasks          int               `json:"failed_tasks"`
-	RetryingTasks        int               `json:"retrying_tasks"`
-	Inputs               json.RawMessage   `json:"inputs,omitempty"`
-	Settings             json.RawMessage   `json:"settings,omitempty"`
-	Preflight            ComputePreflight  `json:"preflight"`
-	Artifacts            []ComputeArtifact `json:"artifacts,omitempty"`
+	ID                   string                  `json:"id"`
+	Type                 string                  `json:"type"`
+	TemplateID           string                  `json:"template_id,omitempty"`
+	TemplateName         string                  `json:"template_name,omitempty"`
+	OutputKind           string                  `json:"output_kind,omitempty"`
+	ExecutionProfile     ComputeExecutionProfile `json:"execution_profile,omitempty"`
+	InputFileIDs         []string                `json:"input_file_ids,omitempty"`
+	Status               string                  `json:"status"`
+	Confidence           string                  `json:"confidence,omitempty"`
+	NeedsAttentionReason string                  `json:"needs_attention_reason,omitempty"`
+	FailureCategory      string                  `json:"failure_category,omitempty"`
+	CreatedAt            time.Time               `json:"created_at"`
+	UpdatedAt            time.Time               `json:"updated_at"`
+	StartedAt            time.Time               `json:"started_at,omitempty"`
+	FinishedAt           time.Time               `json:"finished_at,omitempty"`
+	TotalTasks           int                     `json:"total_tasks"`
+	CompletedTasks       int                     `json:"completed_tasks"`
+	FailedTasks          int                     `json:"failed_tasks"`
+	RetryingTasks        int                     `json:"retrying_tasks"`
+	Inputs               json.RawMessage         `json:"inputs,omitempty"`
+	Settings             json.RawMessage         `json:"settings,omitempty"`
+	Preflight            ComputePreflight        `json:"preflight"`
+	Artifacts            []ComputeArtifact       `json:"artifacts,omitempty"`
 }
 
 type ComputeArtifactAssembler func(job *ComputeJob, tasks []*ComputeTask, now time.Time) ([]ComputeArtifact, error)
@@ -94,11 +97,22 @@ type ComputeJobSubmit struct {
 	Tasks    []json.RawMessage `json:"tasks,omitempty"`
 }
 
+type ComputeExecutionProfile struct {
+	ResolvedRenderDevice          string   `json:"resolved_render_device,omitempty"`
+	EffectiveRequiredCapabilities []string `json:"effective_required_capabilities,omitempty"`
+	RequiresBlender               bool     `json:"requires_blender,omitempty"`
+	RequiresCoordinatorFFmpeg     bool     `json:"requires_coordinator_ffmpeg,omitempty"`
+	EstimatedOutputBytesTotal     int64    `json:"estimated_output_bytes_total,omitempty"`
+	EstimatedOutputBytesPerTask   int64    `json:"estimated_output_bytes_per_task,omitempty"`
+}
+
 type ComputeJobPreview struct {
-	TemplateID   string           `json:"template_id,omitempty"`
-	TemplateName string           `json:"template_name,omitempty"`
-	OutputKind   string           `json:"output_kind,omitempty"`
-	Preflight    ComputePreflight `json:"preflight"`
+	TemplateID       string                  `json:"template_id,omitempty"`
+	TemplateName     string                  `json:"template_name,omitempty"`
+	OutputKind       string                  `json:"output_kind,omitempty"`
+	ExecutionProfile ComputeExecutionProfile `json:"execution_profile,omitempty"`
+	InputFileIDs     []string                `json:"input_file_ids,omitempty"`
+	Preflight        ComputePreflight        `json:"preflight"`
 }
 
 type Coordinator struct {
@@ -115,14 +129,16 @@ type Coordinator struct {
 }
 
 type computeSubmissionBuild struct {
-	jobType       string
-	templateID    string
-	templateName  string
-	outputKind    string
-	inputs        json.RawMessage
-	settings      json.RawMessage
-	preflight     ComputePreflight
-	compiledTasks []compiledComputeTask
+	jobType          string
+	templateID       string
+	templateName     string
+	outputKind       string
+	executionProfile ComputeExecutionProfile
+	inputFileIDs     []string
+	inputs           json.RawMessage
+	settings         json.RawMessage
+	preflight        ComputePreflight
+	compiledTasks    []compiledComputeTask
 }
 
 func NewCoordinator(cfg config.Config, idx index.Store) *Coordinator {
@@ -290,6 +306,8 @@ func (c *Coordinator) Restore() error {
 			TemplateID:           snapshot.TemplateID,
 			TemplateName:         snapshot.TemplateName,
 			OutputKind:           snapshot.OutputKind,
+			ExecutionProfile:     executionProfileFromSnapshot(snapshot.ExecutionProfile),
+			InputFileIDs:         cloneStrings(snapshot.InputFileIDs),
 			Status:               snapshot.Status,
 			Confidence:           snapshot.Confidence,
 			NeedsAttentionReason: snapshot.NeedsAttentionReason,
@@ -365,6 +383,10 @@ func (c *Coordinator) Restore() error {
 		worker := &ComputeWorker{
 			ID:                 snapshot.ID,
 			Status:             snapshot.Status,
+			DeviceName:         snapshot.DeviceName,
+			OSInfo:             snapshot.OSInfo,
+			RegistrationIP:     snapshot.RegistrationIP,
+			EnrolledAt:         snapshot.EnrolledAt,
 			LastSeen:           snapshot.LastSeen,
 			LeaseUntil:         snapshot.LeaseUntil,
 			Capabilities:       cloneStrings(snapshot.Capabilities),
@@ -446,19 +468,21 @@ func (c *Coordinator) SubmitJob(jobID string, req ComputeJobSubmit, now time.Tim
 	}
 
 	job := &ComputeJob{
-		ID:           jobID,
-		Type:         build.jobType,
-		TemplateID:   build.templateID,
-		TemplateName: build.templateName,
-		OutputKind:   build.outputKind,
-		Status:       ComputeJobStatusQueued,
-		Confidence:   build.preflight.Confidence,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		TotalTasks:   len(build.compiledTasks),
-		Inputs:       cloneRawMessage(build.inputs),
-		Settings:     cloneRawMessage(build.settings),
-		Preflight:    clonePreflight(build.preflight),
+		ID:               jobID,
+		Type:             build.jobType,
+		TemplateID:       build.templateID,
+		TemplateName:     build.templateName,
+		OutputKind:       build.outputKind,
+		ExecutionProfile: cloneExecutionProfile(build.executionProfile),
+		InputFileIDs:     cloneStrings(build.inputFileIDs),
+		Status:           ComputeJobStatusQueued,
+		Confidence:       build.preflight.Confidence,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		TotalTasks:       len(build.compiledTasks),
+		Inputs:           cloneRawMessage(build.inputs),
+		Settings:         cloneRawMessage(build.settings),
+		Preflight:        clonePreflight(build.preflight),
 	}
 	c.jobs[jobID] = job
 
@@ -501,10 +525,12 @@ func (c *Coordinator) PreviewJob(req ComputeJobSubmit, now time.Time) (*ComputeJ
 	}
 
 	return &ComputeJobPreview{
-		TemplateID:   build.templateID,
-		TemplateName: build.templateName,
-		OutputKind:   build.outputKind,
-		Preflight:    clonePreflight(build.preflight),
+		TemplateID:       build.templateID,
+		TemplateName:     build.templateName,
+		OutputKind:       build.outputKind,
+		ExecutionProfile: cloneExecutionProfile(build.executionProfile),
+		InputFileIDs:     cloneStrings(build.inputFileIDs),
+		Preflight:        clonePreflight(build.preflight),
 	}, nil
 }
 
@@ -775,6 +801,61 @@ func (c *Coordinator) WorkersSnapshot() []*ComputeWorker {
 	return out
 }
 
+func (c *Coordinator) InputFileUsage() map[string][]string {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return map[string][]string{}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	usage := map[string][]string{}
+	for _, job := range c.jobs {
+		if job == nil {
+			continue
+		}
+		for _, fileID := range job.InputFileIDs {
+			fileID = strings.TrimSpace(fileID)
+			if fileID == "" {
+				continue
+			}
+			usage[fileID] = append(usage[fileID], job.ID)
+		}
+	}
+	for fileID := range usage {
+		sort.Strings(usage[fileID])
+	}
+	return usage
+}
+
+func (c *Coordinator) InputFileUsageFor(fileID string) []string {
+	if c == nil || !c.cfg.ComputeEnabled {
+		return nil
+	}
+	trimmed := strings.TrimSpace(fileID)
+	if trimmed == "" {
+		return nil
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	jobIDs := make([]string, 0)
+	for _, job := range c.jobs {
+		if job == nil {
+			continue
+		}
+		for _, inputID := range job.InputFileIDs {
+			if strings.TrimSpace(inputID) == trimmed {
+				jobIDs = append(jobIDs, job.ID)
+				break
+			}
+		}
+	}
+	sort.Strings(jobIDs)
+	return jobIDs
+}
+
 func (c *Coordinator) Overview(now time.Time) *ComputeOverview {
 	if c == nil || !c.cfg.ComputeEnabled {
 		return nil
@@ -882,6 +963,83 @@ func (c *Coordinator) RetryJob(jobID string, now time.Time) (*ComputeJob, error)
 	}
 	if job.Status != ComputeJobStatusNeedsAttention && job.Status != ComputeJobStatusDone {
 		return nil, fmt.Errorf("job %s is not in a retryable terminal state", jobID)
+	}
+
+	if strings.TrimSpace(job.TemplateID) != "" {
+		build, err := c.buildSubmissionLocked(ComputeJobSubmit{
+			Template: job.TemplateID,
+			Inputs:   cloneRawMessage(job.Inputs),
+			Settings: cloneRawMessage(job.Settings),
+		}, now, false)
+		if err != nil {
+			return nil, err
+		}
+		if !build.preflight.Ready {
+			return nil, fmt.Errorf("%s", preflightFailureMessage(build.preflight))
+		}
+
+		for taskID, task := range c.tasks {
+			if task == nil || task.JobID != jobID {
+				continue
+			}
+			if task.WorkerID != "" {
+				if worker := c.workers[task.WorkerID]; worker != nil {
+					if worker.Disabled {
+						worker.Status = "disabled"
+					} else {
+						worker.Status = "ready"
+					}
+					worker.LeaseUntil = time.Time{}
+					c.saveWorkerLocked(worker)
+				}
+			}
+			c.removeTaskFromQueueLocked(taskID)
+			delete(c.tasks, taskID)
+			if c.idx != nil {
+				_ = c.idx.DeleteComputeTask(taskID)
+			}
+		}
+
+		for index, compiledTask := range build.compiledTasks {
+			if c.cfg.ComputeTaskSizeBytes > 0 && int64(len(compiledTask.Payload)) > c.cfg.ComputeTaskSizeBytes {
+				return nil, fmt.Errorf("task %d payload too large: %d > %d", index, len(compiledTask.Payload), c.cfg.ComputeTaskSizeBytes)
+			}
+			taskID := fmt.Sprintf("%s_t%04d", jobID, index+1)
+			task := &ComputeTask{
+				ID:                   taskID,
+				JobID:                jobID,
+				Status:               ComputeTaskStatusQueued,
+				UpdatedAt:            now,
+				RequiredCapabilities: cloneStrings(compiledTask.RequiredCapabilities),
+				Payload:              cloneRawMessage(compiledTask.Payload),
+			}
+			c.tasks[taskID] = task
+			c.enqueueTaskLocked(taskID)
+			c.saveTaskLocked(task)
+		}
+
+		job.Type = build.jobType
+		job.TemplateID = build.templateID
+		job.TemplateName = build.templateName
+		job.OutputKind = build.outputKind
+		job.ExecutionProfile = cloneExecutionProfile(build.executionProfile)
+		job.InputFileIDs = cloneStrings(build.inputFileIDs)
+		job.TotalTasks = len(build.compiledTasks)
+		job.Status = ComputeJobStatusQueued
+		job.Confidence = build.preflight.Confidence
+		job.NeedsAttentionReason = ""
+		job.FailureCategory = ""
+		job.UpdatedAt = now
+		job.StartedAt = time.Time{}
+		job.FinishedAt = time.Time{}
+		job.CompletedTasks = 0
+		job.FailedTasks = 0
+		job.RetryingTasks = 0
+		job.Artifacts = nil
+		job.Preflight = clonePreflight(build.preflight)
+		c.refreshJobLocked(jobID, now)
+		c.saveJobLocked(job)
+		return c.cloneJob(job), nil
 	}
 
 	preflight, err := c.rebuildPreflightLocked(job, now)
@@ -1182,19 +1340,35 @@ func (c *Coordinator) buildSubmissionLocked(req ComputeJobSubmit, now time.Time,
 		if err != nil {
 			return nil, err
 		}
-		preflight := c.buildPreflightLocked(compilation.Template.Name, compilation.Template.RequiredCapabilities, len(compilation.Tasks), compilation.EstimatedOutputBytes, now)
+		executionProfile, compiledTasks := c.resolveExecutionProfileLocked(compilation.Template.ID, compilation.ExecutionProfile, compilation.Tasks, req.Settings, now)
+		requiredCaps := cloneStrings(executionProfile.EffectiveRequiredCapabilities)
+		if len(requiredCaps) == 0 {
+			requiredCaps = requiredCapabilitiesFromTasks(compiledTasks)
+		}
+		preflight := c.buildPreflightLocked(compilation.Template.Name, requiredCaps, len(compiledTasks), compilation.EstimatedOutputBytes, now)
+		if executionProfile.RequiresCoordinatorFFmpeg && !c.coordinatorHasFFmpegLocked() {
+			preflight.Checks = append(preflight.Checks, ComputePreflightCheck{
+				Code:    "coordinator_ffmpeg",
+				Status:  "fail",
+				Message: "stitched output requires coordinator ffmpeg, but ffmpeg is not available on PATH",
+			})
+			preflight.Ready = false
+			preflight.Confidence = "Low"
+		}
 		if requireReady && !preflight.Ready {
 			return nil, fmt.Errorf("%s", preflightFailureMessage(preflight))
 		}
 		return &computeSubmissionBuild{
-			jobType:       compilation.Template.ID,
-			templateID:    compilation.Template.ID,
-			templateName:  compilation.Template.Name,
-			outputKind:    compilation.Template.OutputKind,
-			inputs:        cloneRawMessage(req.Inputs),
-			settings:      cloneRawMessage(req.Settings),
-			preflight:     preflight,
-			compiledTasks: compilation.Tasks,
+			jobType:          compilation.Template.ID,
+			templateID:       compilation.Template.ID,
+			templateName:     compilation.Template.Name,
+			outputKind:       compilation.Template.OutputKind,
+			executionProfile: cloneExecutionProfile(executionProfile),
+			inputFileIDs:     cloneStrings(compilation.InputFileIDs),
+			inputs:           cloneRawMessage(req.Inputs),
+			settings:         cloneRawMessage(req.Settings),
+			preflight:        preflight,
+			compiledTasks:    compiledTasks,
 		}, nil
 	}
 
@@ -1221,12 +1395,93 @@ func (c *Coordinator) buildSubmissionLocked(req ComputeJobSubmit, now time.Time,
 	}
 
 	return &computeSubmissionBuild{
-		jobType:       jobType,
+		jobType: jobType,
+		executionProfile: ComputeExecutionProfile{
+			EffectiveRequiredCapabilities: uniqueSortedStrings(requiredCapabilities),
+			EstimatedOutputBytesTotal:     int64(len(compiledTasks)) * 512 * 1024,
+		},
 		inputs:        cloneRawMessage(req.Inputs),
 		settings:      cloneRawMessage(req.Settings),
 		preflight:     preflight,
 		compiledTasks: compiledTasks,
 	}, nil
+}
+
+func (c *Coordinator) resolveExecutionProfileLocked(templateID string, profile ComputeExecutionProfile, tasks []compiledComputeTask, settingsRaw json.RawMessage, now time.Time) (ComputeExecutionProfile, []compiledComputeTask) {
+	resolved := cloneExecutionProfile(profile)
+	updatedTasks := make([]compiledComputeTask, 0, len(tasks))
+	for _, task := range tasks {
+		updatedTasks = append(updatedTasks, compiledComputeTask{
+			Payload:              cloneRawMessage(task.Payload),
+			RequiredCapabilities: cloneStrings(task.RequiredCapabilities),
+		})
+	}
+
+	if templateID != "render_frames" {
+		if len(resolved.EffectiveRequiredCapabilities) == 0 {
+			resolved.EffectiveRequiredCapabilities = requiredCapabilitiesFromTasks(updatedTasks)
+		}
+		return resolved, updatedTasks
+	}
+
+	settings := renderFramesSettings{RenderDevice: "auto", StitchedOutput: false}
+	_ = decodeOptionalJSON(settingsRaw, &settings)
+	device := strings.ToLower(strings.TrimSpace(settings.RenderDevice))
+	if device == "" {
+		device = "auto"
+	}
+	if device == "auto" {
+		device = c.resolveRenderDeviceLocked(now)
+	}
+	if device != "gpu" {
+		device = "cpu"
+	}
+
+	required := []string{"render_frames", "render_device:" + device, "tool:blender"}
+	resolved.ResolvedRenderDevice = device
+	resolved.EffectiveRequiredCapabilities = cloneStrings(required)
+	resolved.RequiresBlender = true
+	resolved.RequiresCoordinatorFFmpeg = settings.StitchedOutput
+
+	for i := range updatedTasks {
+		updatedTasks[i].RequiredCapabilities = cloneStrings(required)
+		if len(updatedTasks[i].Payload) == 0 {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(updatedTasks[i].Payload, &payload); err != nil {
+			continue
+		}
+		payload["render_device"] = device
+		updatedTasks[i].Payload = mustMarshalRaw(payload)
+	}
+
+	return resolved, updatedTasks
+}
+
+func requiredCapabilitiesFromTasks(tasks []compiledComputeTask) []string {
+	acc := make([]string, 0)
+	for _, task := range tasks {
+		acc = append(acc, task.RequiredCapabilities...)
+	}
+	return uniqueSortedStrings(acc)
+}
+
+func (c *Coordinator) resolveRenderDeviceLocked(now time.Time) string {
+	for _, worker := range c.workers {
+		if worker == nil || worker.Disabled || !c.workerHealthyLocked(worker, now) {
+			continue
+		}
+		if c.workerCanRunCapabilitiesLocked(worker, []string{"render_frames", "render_device:gpu", "tool:blender"}) {
+			return "gpu"
+		}
+	}
+	return "cpu"
+}
+
+func (c *Coordinator) coordinatorHasFFmpegLocked() bool {
+	_, err := exec.LookPath("ffmpeg")
+	return err == nil
 }
 
 func (c *Coordinator) buildPreflightLocked(displayName string, requiredCapabilities []string, taskCount int, estimatedOutputBytes int64, now time.Time) ComputePreflight {
@@ -1346,18 +1601,25 @@ func (c *Coordinator) rebuildPreflightLocked(job *ComputeJob, now time.Time) (Co
 	}
 
 	requiredCapabilities := make([]string, 0)
+	if len(job.ExecutionProfile.EffectiveRequiredCapabilities) > 0 {
+		requiredCapabilities = append(requiredCapabilities, job.ExecutionProfile.EffectiveRequiredCapabilities...)
+	}
 	for _, task := range c.tasks {
 		if task == nil || task.JobID != job.ID {
 			continue
 		}
 		requiredCapabilities = append(requiredCapabilities, task.RequiredCapabilities...)
 	}
+	estimatedOutputBytes := job.Preflight.EstimatedOutputBytes
+	if job.ExecutionProfile.EstimatedOutputBytesTotal > 0 {
+		estimatedOutputBytes = job.ExecutionProfile.EstimatedOutputBytesTotal
+	}
 
 	displayName := job.TemplateName
 	if displayName == "" {
 		displayName = job.Type
 	}
-	return c.buildPreflightLocked(displayName, uniqueSortedStrings(requiredCapabilities), job.TotalTasks, job.Preflight.EstimatedOutputBytes, now), nil
+	return c.buildPreflightLocked(displayName, uniqueSortedStrings(requiredCapabilities), job.TotalTasks, estimatedOutputBytes, now), nil
 }
 
 func (c *Coordinator) retryOrFailTaskLocked(task *ComputeTask, worker *ComputeWorker, errMsg, category string, now time.Time, stale bool) {
@@ -1796,6 +2058,8 @@ func (c *Coordinator) toJobSnapshot(job *ComputeJob) *index.ComputeJobSnapshot {
 		TemplateID:           job.TemplateID,
 		TemplateName:         job.TemplateName,
 		OutputKind:           job.OutputKind,
+		ExecutionProfile:     executionProfileToSnapshot(job.ExecutionProfile),
+		InputFileIDs:         cloneStrings(job.InputFileIDs),
 		Status:               job.Status,
 		Confidence:           job.Confidence,
 		NeedsAttentionReason: job.NeedsAttentionReason,
@@ -1843,6 +2107,10 @@ func (c *Coordinator) toWorkerSnapshot(worker *ComputeWorker) *index.ComputeWork
 	return &index.ComputeWorkerSnapshot{
 		ID:                 worker.ID,
 		Status:             worker.Status,
+		DeviceName:         worker.DeviceName,
+		OSInfo:             worker.OSInfo,
+		RegistrationIP:     worker.RegistrationIP,
+		EnrolledAt:         worker.EnrolledAt,
 		LastSeen:           worker.LastSeen,
 		LeaseUntil:         worker.LeaseUntil,
 		Capabilities:       cloneStrings(worker.Capabilities),
@@ -1870,6 +2138,8 @@ func (c *Coordinator) cloneJob(job *ComputeJob) *ComputeJob {
 		return nil
 	}
 	cp := *job
+	cp.ExecutionProfile = cloneExecutionProfile(job.ExecutionProfile)
+	cp.InputFileIDs = cloneStrings(job.InputFileIDs)
 	cp.Inputs = cloneRawMessage(job.Inputs)
 	cp.Settings = cloneRawMessage(job.Settings)
 	cp.Preflight = clonePreflight(job.Preflight)
@@ -1911,6 +2181,12 @@ func cloneArtifacts(artifacts []ComputeArtifact) []ComputeArtifact {
 		out = append(out, cp)
 	}
 	return out
+}
+
+func cloneExecutionProfile(profile ComputeExecutionProfile) ComputeExecutionProfile {
+	cp := profile
+	cp.EffectiveRequiredCapabilities = cloneStrings(profile.EffectiveRequiredCapabilities)
+	return cp
 }
 
 func jobHasFinalArtifact(job *ComputeJob) bool {
@@ -1955,6 +2231,28 @@ func preflightToSnapshot(preflight ComputePreflight) index.ComputePreflightSnaps
 		EstimatedOutputBytes: preflight.EstimatedOutputBytes,
 		RequiredCapabilities: cloneStrings(preflight.RequiredCapabilities),
 		Checks:               checks,
+	}
+}
+
+func executionProfileToSnapshot(profile ComputeExecutionProfile) index.ComputeExecutionProfileSnapshot {
+	return index.ComputeExecutionProfileSnapshot{
+		ResolvedRenderDevice:          profile.ResolvedRenderDevice,
+		EffectiveRequiredCapabilities: cloneStrings(profile.EffectiveRequiredCapabilities),
+		RequiresBlender:               profile.RequiresBlender,
+		RequiresCoordinatorFFmpeg:     profile.RequiresCoordinatorFFmpeg,
+		EstimatedOutputBytesTotal:     profile.EstimatedOutputBytesTotal,
+		EstimatedOutputBytesPerTask:   profile.EstimatedOutputBytesPerTask,
+	}
+}
+
+func executionProfileFromSnapshot(snapshot index.ComputeExecutionProfileSnapshot) ComputeExecutionProfile {
+	return ComputeExecutionProfile{
+		ResolvedRenderDevice:          snapshot.ResolvedRenderDevice,
+		EffectiveRequiredCapabilities: cloneStrings(snapshot.EffectiveRequiredCapabilities),
+		RequiresBlender:               snapshot.RequiresBlender,
+		RequiresCoordinatorFFmpeg:     snapshot.RequiresCoordinatorFFmpeg,
+		EstimatedOutputBytesTotal:     snapshot.EstimatedOutputBytesTotal,
+		EstimatedOutputBytesPerTask:   snapshot.EstimatedOutputBytesPerTask,
 	}
 }
 

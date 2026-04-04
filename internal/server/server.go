@@ -147,6 +147,11 @@ func (s *Server) reapComputeWorkers() {
 // reapExpiredFiles deletes files past their TTL or download limit.
 func (s *Server) reapExpiredFiles() {
 	for _, sf := range s.storage.ExpiredFiles() {
+		if s.compute != nil {
+			if refs := s.compute.InputFileUsageFor(sf.ID); len(refs) > 0 {
+				continue
+			}
+		}
 		log.Printf("[cleanup] deleting expired file %s (%s)", sf.ID, sf.Metadata.Filename)
 		s.storage.DeleteFile(sf.ID)
 	}

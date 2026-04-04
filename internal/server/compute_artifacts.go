@@ -8,7 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,8 +102,15 @@ func (s *Server) assembleComputeArtifacts(job *ComputeJob, tasks []*ComputeTask,
 	if err := os.MkdirAll(filepath.Dir(tempPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create artifact temp dir: %w", err)
 	}
-	if err := writeComputeArtifactPackage(tempPath, manifestBytes, sourceFiles); err != nil {
-		return nil, err
+
+	if job.TemplateID == "render_frames" {
+		if err := s.writeRenderFramesArtifactPackage(tempPath, manifestBytes, sourceFiles, job); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := writeComputeArtifactPackage(tempPath, manifestBytes, sourceFiles); err != nil {
+			return nil, err
+		}
 	}
 
 	meta, err := generatedFileMetadata(tempPath, computeFinalPackageName(job), "application/zip", s.cfg.ChunkSize)
@@ -184,6 +195,241 @@ func addStoredFileToZip(archive *zip.Writer, name, sourcePath string) error {
 	}
 	if _, err := io.Copy(writer, reader); err != nil {
 		return fmt.Errorf("copy artifact %s into zip: %w", name, err)
+	}
+	return nil
+}
+
+func (s *Server) writeRenderFramesArtifactPackage(target string, manifest []byte, sourceFiles []*StoredFile, job *ComputeJob) error {
+	inputs := renderFramesInputs{FrameStart: 1, FrameEnd: 1}
+	settings := renderFramesSettings{OutputFormat: "png", Fps: 24, VideoCodec: "libx264", StitchedOutput: true}
+	if err := decodeOptionalJSON(job.Inputs, &inputs); err != nil {
+		return fmt.Errorf("decode render_frames inputs: %w", err)
+	}
+	if err := decodeOptionalJSON(job.Settings, &settings); err != nil {
+		return fmt.Errorf("decode render_frames settings: %w", err)
+	}
+	if inputs.FrameEnd < inputs.FrameStart {
+		return fmt.Errorf("render assembly invalid frame range")
+	}
+
+	workspace := filepath.Join(s.cfg.TempDir, fmt.Sprintf("%s-render-assembly", job.ID))
+	framesDir := filepath.Join(workspace, "frames")
+	finalDir := filepath.Join(workspace, "final")
+	if err := os.RemoveAll(workspace); err != nil {
+		return fmt.Errorf("clean render assembly workspace: %w", err)
+	}
+	defer os.RemoveAll(workspace)
+	if err := os.MkdirAll(framesDir, 0o755); err != nil {
+		return fmt.Errorf("create render frames workspace: %w", err)
+	}
+	if err := os.MkdirAll(finalDir, 0o755); err != nil {
+		return fmt.Errorf("create render final workspace: %w", err)
+	}
+
+	seenFrames := make(map[int]string)
+	for _, sf := range sourceFiles {
+		if sf == nil {
+			continue
+		}
+		if err := unpackRenderArtifact(sf.Path, framesDir, seenFrames); err != nil {
+			return err
+		}
+	}
+
+	for frame := inputs.FrameStart; frame <= inputs.FrameEnd; frame++ {
+		if _, ok := seenFrames[frame]; !ok {
+			return fmt.Errorf("render assembly missing frame %d", frame)
+		}
+	}
+
+	videoPath := ""
+	if settings.StitchedOutput {
+		ffmpegPath, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			return fmt.Errorf("render assembly requires ffmpeg for stitched output")
+		}
+		ext := normalizedFrameExtension(settings.OutputFormat)
+		inputPattern := filepath.Join(framesDir, fmt.Sprintf("frame_%%06d%s", ext))
+		videoPath = filepath.Join(finalDir, "render.mp4")
+		fps := settings.Fps
+		if fps <= 0 {
+			fps = 24
+		}
+		codec := strings.TrimSpace(settings.VideoCodec)
+		if codec == "" {
+			codec = "libx264"
+		}
+		cmd := exec.Command(ffmpegPath,
+			"-y",
+			"-framerate", strconv.Itoa(fps),
+			"-i", inputPattern,
+			"-c:v", codec,
+			"-pix_fmt", "yuv420p",
+			videoPath,
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ffmpeg stitch failed: %w (%s)", err, strings.TrimSpace(string(out)))
+		}
+	}
+
+	archiveFile, err := os.Create(target)
+	if err != nil {
+		return fmt.Errorf("create final artifact package: %w", err)
+	}
+	defer archiveFile.Close()
+
+	archive := zip.NewWriter(archiveFile)
+	defer archive.Close()
+
+	writer, err := archive.Create("manifest.json")
+	if err != nil {
+		return fmt.Errorf("create manifest.json: %w", err)
+	}
+	if _, err := writer.Write(manifest); err != nil {
+		return fmt.Errorf("write manifest.json: %w", err)
+	}
+
+	frames := make([]int, 0, len(seenFrames))
+	for frame := range seenFrames {
+		frames = append(frames, frame)
+	}
+	sort.Ints(frames)
+	for _, frame := range frames {
+		framePath := seenFrames[frame]
+		ext := filepath.Ext(framePath)
+		entryName := fmt.Sprintf("frames/frame_%06d%s", frame, ext)
+		if err := addStoredFileToZip(archive, entryName, framePath); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(videoPath) != "" {
+		if err := addStoredFileToZip(archive, "final/render.mp4", videoPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+var frameNumberPattern = regexp.MustCompile(`(\d+)`)
+
+func unpackRenderArtifact(sourcePath, framesDir string, seenFrames map[int]string) error {
+	if strings.EqualFold(filepath.Ext(sourcePath), ".zip") {
+		zr, err := zip.OpenReader(sourcePath)
+		if err != nil {
+			return fmt.Errorf("open task artifact zip: %w", err)
+		}
+		defer zr.Close()
+		for _, file := range zr.File {
+			if file.FileInfo().IsDir() {
+				continue
+			}
+			if !isRenderFrameFile(file.Name) {
+				continue
+			}
+			frame, ok := parseFrameNumberFromName(file.Name)
+			if !ok {
+				continue
+			}
+			if _, exists := seenFrames[frame]; exists {
+				return fmt.Errorf("render assembly duplicate frame %d", frame)
+			}
+			ext := normalizedFrameExtension(filepath.Ext(file.Name))
+			targetPath := filepath.Join(framesDir, fmt.Sprintf("frame_%06d%s", frame, ext))
+			rc, err := file.Open()
+			if err != nil {
+				return fmt.Errorf("open zip entry %s: %w", file.Name, err)
+			}
+			out, err := os.Create(targetPath)
+			if err != nil {
+				rc.Close()
+				return fmt.Errorf("create frame %s: %w", targetPath, err)
+			}
+			_, copyErr := io.Copy(out, rc)
+			rc.Close()
+			closeErr := out.Close()
+			if copyErr != nil {
+				return fmt.Errorf("extract frame %s: %w", file.Name, copyErr)
+			}
+			if closeErr != nil {
+				return fmt.Errorf("close frame %s: %w", targetPath, closeErr)
+			}
+			seenFrames[frame] = targetPath
+		}
+		return nil
+	}
+
+	if !isRenderFrameFile(sourcePath) {
+		return nil
+	}
+	frame, ok := parseFrameNumberFromName(sourcePath)
+	if !ok {
+		return nil
+	}
+	if _, exists := seenFrames[frame]; exists {
+		return fmt.Errorf("render assembly duplicate frame %d", frame)
+	}
+	ext := normalizedFrameExtension(filepath.Ext(sourcePath))
+	targetPath := filepath.Join(framesDir, fmt.Sprintf("frame_%06d%s", frame, ext))
+	if err := copyFile(sourcePath, targetPath); err != nil {
+		return err
+	}
+	seenFrames[frame] = targetPath
+	return nil
+}
+
+func isRenderFrameFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".exr":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseFrameNumberFromName(name string) (int, bool) {
+	matches := frameNumberPattern.FindAllString(filepath.Base(name), -1)
+	if len(matches) == 0 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(matches[len(matches)-1])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func normalizedFrameExtension(raw string) string {
+	ext := strings.ToLower(strings.TrimSpace(raw))
+	if ext == "" {
+		return ".png"
+	}
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	if ext == ".jpeg" {
+		return ".jpg"
+	}
+	return ext
+}
+
+func copyFile(sourcePath, targetPath string) error {
+	src, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", sourcePath, err)
+	}
+	defer src.Close()
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir for %s: %w", targetPath, err)
+	}
+	dst, err := os.Create(targetPath)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", targetPath, err)
+	}
+	defer dst.Close()
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("copy %s -> %s: %w", sourcePath, targetPath, err)
 	}
 	return nil
 }

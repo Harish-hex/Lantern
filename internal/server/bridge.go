@@ -167,6 +167,20 @@ func (b *Bridge) ComputeArtifacts() []ComputeArtifactRecord {
 	return out
 }
 
+func (b *Bridge) ComputeInputUsageMap() map[string][]string {
+	if b.compute == nil {
+		return map[string][]string{}
+	}
+	return b.compute.InputFileUsage()
+}
+
+func (b *Bridge) ComputeInputUsage(fileID string) []string {
+	if b.compute == nil {
+		return nil
+	}
+	return b.compute.InputFileUsageFor(fileID)
+}
+
 func (b *Bridge) ComputeTemplates() []ComputeTemplate {
 	return BuiltInComputeTemplates()
 }

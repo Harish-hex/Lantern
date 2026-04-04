@@ -499,6 +499,9 @@ func cmdWorker(args []string) {
 	oneShot := fs.Bool("oneshot", false, "exit after one successful task")
 	taskTimeout := fs.Duration("task-timeout", 5*time.Minute, "maximum time for a single task execution")
 	taskZipThresholdMB := fs.Int64("task-zip-threshold-mb", 8, "zip task outputs only when total output exceeds this threshold (single-file small outputs upload directly)")
+	renderBundleCacheDir := fs.String("render-bundle-cache-dir", "", "persistent cache directory for render scene bundles (default: <workspace>/render_bundle_cache)")
+	renderBundleCacheBudgetGB := fs.Int64("render-bundle-cache-budget-gb", 20, "render bundle cache budget in GiB (LRU eviction)")
+	renderDevice := fs.String("render-device", "auto", "render device tag advertised by worker: cpu, gpu, or auto")
 	toolsDir := fs.String("tools-dir", "", "directory for auto-downloaded tool binaries (default: ~/.lantern/tools)")
 	autoDownload := fs.Bool("auto-download", false, "automatically download missing toolchain binaries")
 	fs.Parse(args)
@@ -515,27 +518,31 @@ func cmdWorker(args []string) {
 	}
 
 	runnerCfg := worker.RunnerConfig{
-		Host:                  *host,
-		Port:                  *port,
-		HTTPPort:              *httpPort,
-		WorkerID:              *workerID,
-		Token:                 *token,
-		EnrollCode:            strings.TrimSpace(*enrollCode),
-		DeviceName:            strings.TrimSpace(*deviceName),
-		OSInfo:                runtime.GOOS,
-		Heartbeat:             *heartbeat,
-		PollInterval:          *poll,
-		OneShot:               *oneShot,
-		TaskTimeout:           *taskTimeout,
-		TaskZipThresholdBytes: *taskZipThresholdMB * 1024 * 1024,
-		Registry:              worker.NewRegistry(),
-		ToolchainManager:      tcm,
+		Host:                         *host,
+		Port:                         *port,
+		HTTPPort:                     *httpPort,
+		WorkerID:                     *workerID,
+		Token:                        *token,
+		EnrollCode:                   strings.TrimSpace(*enrollCode),
+		DeviceName:                   strings.TrimSpace(*deviceName),
+		OSInfo:                       runtime.GOOS,
+		Heartbeat:                    *heartbeat,
+		PollInterval:                 *poll,
+		OneShot:                      *oneShot,
+		TaskTimeout:                  *taskTimeout,
+		TaskZipThresholdBytes:        *taskZipThresholdMB * 1024 * 1024,
+		RenderBundleCacheDir:         strings.TrimSpace(*renderBundleCacheDir),
+		RenderBundleCacheBudgetBytes: *renderBundleCacheBudgetGB * 1024 * 1024 * 1024,
+		RenderDevice:                 strings.TrimSpace(*renderDevice),
+		Registry:                     worker.NewRegistry(),
+		ToolchainManager:             tcm,
 	}
 
 	// Register all available executors.
 	runnerCfg.Registry.Register(worker.NewDataProcessingExecutor())
 	runnerCfg.Registry.Register(worker.NewImageBatchExecutor())
 	runnerCfg.Registry.Register(worker.NewDocumentOCRExecutor(tcm))
+	runnerCfg.Registry.Register(worker.NewRenderFramesExecutor(tcm))
 
 	// Override capabilities if requested (usually we let registry define it)
 	if *capabilities != defaultWorkerCapabilityCSV() {

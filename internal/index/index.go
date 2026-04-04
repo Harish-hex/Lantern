@@ -41,27 +41,29 @@ type StoredFileSnapshot struct {
 }
 
 type ComputeJobSnapshot struct {
-	ID                   string                    `json:"id"`
-	Type                 string                    `json:"type"`
-	TemplateID           string                    `json:"template_id,omitempty"`
-	TemplateName         string                    `json:"template_name,omitempty"`
-	OutputKind           string                    `json:"output_kind,omitempty"`
-	Status               string                    `json:"status"`
-	Confidence           string                    `json:"confidence,omitempty"`
-	NeedsAttentionReason string                    `json:"needs_attention_reason,omitempty"`
-	FailureCategory      string                    `json:"failure_category,omitempty"`
-	CreatedAt            time.Time                 `json:"created_at"`
-	UpdatedAt            time.Time                 `json:"updated_at"`
-	StartedAt            time.Time                 `json:"started_at,omitempty"`
-	FinishedAt           time.Time                 `json:"finished_at,omitempty"`
-	TotalTasks           int                       `json:"total_tasks"`
-	CompletedTasks       int                       `json:"completed_tasks"`
-	FailedTasks          int                       `json:"failed_tasks"`
-	RetryingTasks        int                       `json:"retrying_tasks"`
-	Inputs               json.RawMessage           `json:"inputs,omitempty"`
-	Settings             json.RawMessage           `json:"settings,omitempty"`
-	Preflight            ComputePreflightSnapshot  `json:"preflight"`
-	Artifacts            []ComputeArtifactSnapshot `json:"artifacts,omitempty"`
+	ID                   string                          `json:"id"`
+	Type                 string                          `json:"type"`
+	TemplateID           string                          `json:"template_id,omitempty"`
+	TemplateName         string                          `json:"template_name,omitempty"`
+	OutputKind           string                          `json:"output_kind,omitempty"`
+	ExecutionProfile     ComputeExecutionProfileSnapshot `json:"execution_profile,omitempty"`
+	InputFileIDs         []string                        `json:"input_file_ids,omitempty"`
+	Status               string                          `json:"status"`
+	Confidence           string                          `json:"confidence,omitempty"`
+	NeedsAttentionReason string                          `json:"needs_attention_reason,omitempty"`
+	FailureCategory      string                          `json:"failure_category,omitempty"`
+	CreatedAt            time.Time                       `json:"created_at"`
+	UpdatedAt            time.Time                       `json:"updated_at"`
+	StartedAt            time.Time                       `json:"started_at,omitempty"`
+	FinishedAt           time.Time                       `json:"finished_at,omitempty"`
+	TotalTasks           int                             `json:"total_tasks"`
+	CompletedTasks       int                             `json:"completed_tasks"`
+	FailedTasks          int                             `json:"failed_tasks"`
+	RetryingTasks        int                             `json:"retrying_tasks"`
+	Inputs               json.RawMessage                 `json:"inputs,omitempty"`
+	Settings             json.RawMessage                 `json:"settings,omitempty"`
+	Preflight            ComputePreflightSnapshot        `json:"preflight"`
+	Artifacts            []ComputeArtifactSnapshot       `json:"artifacts,omitempty"`
 }
 
 type ComputeTaskSnapshot struct {
@@ -83,6 +85,10 @@ type ComputeTaskSnapshot struct {
 type ComputeWorkerSnapshot struct {
 	ID                 string    `json:"id"`
 	Status             string    `json:"status"`
+	DeviceName         string    `json:"device_name,omitempty"`
+	OSInfo             string    `json:"os_info,omitempty"`
+	RegistrationIP     string    `json:"registration_ip,omitempty"`
+	EnrolledAt         time.Time `json:"enrolled_at,omitempty"`
 	LastSeen           time.Time `json:"last_seen"`
 	LeaseUntil         time.Time `json:"lease_until,omitempty"`
 	Capabilities       []string  `json:"capabilities,omitempty"`
@@ -101,6 +107,15 @@ type ComputePreflightSnapshot struct {
 	EstimatedOutputBytes int64                           `json:"estimated_output_bytes"`
 	RequiredCapabilities []string                        `json:"required_capabilities,omitempty"`
 	Checks               []ComputePreflightCheckSnapshot `json:"checks,omitempty"`
+}
+
+type ComputeExecutionProfileSnapshot struct {
+	ResolvedRenderDevice          string   `json:"resolved_render_device,omitempty"`
+	EffectiveRequiredCapabilities []string `json:"effective_required_capabilities,omitempty"`
+	RequiresBlender               bool     `json:"requires_blender,omitempty"`
+	RequiresCoordinatorFFmpeg     bool     `json:"requires_coordinator_ffmpeg,omitempty"`
+	EstimatedOutputBytesTotal     int64    `json:"estimated_output_bytes_total,omitempty"`
+	EstimatedOutputBytesPerTask   int64    `json:"estimated_output_bytes_per_task,omitempty"`
 }
 
 type ComputePreflightCheckSnapshot struct {

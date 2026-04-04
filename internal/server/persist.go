@@ -183,13 +183,13 @@ func (s *Server) restorePersistedState() error {
 	if s.idx == nil {
 		return nil
 	}
+	if err := s.restoreComputeState(); err != nil {
+		return err
+	}
 	if err := s.restoreStoredFiles(); err != nil {
 		return err
 	}
 	if err := s.restoreSessions(); err != nil {
-		return err
-	}
-	if err := s.restoreComputeState(); err != nil {
 		return err
 	}
 	return nil
@@ -213,7 +213,12 @@ func (s *Server) restoreStoredFiles() error {
 
 	now := time.Now()
 	for _, snapshot := range snapshots {
-		if now.After(snapshot.ExpiresAt) {
+		inUseByJobs := false
+		if s.compute != nil {
+			inUseByJobs = len(s.compute.InputFileUsageFor(snapshot.ID)) > 0
+		}
+
+		if now.After(snapshot.ExpiresAt) && !inUseByJobs {
 			_ = s.idx.DeleteStoredFile(snapshot.ID)
 			continue
 		}

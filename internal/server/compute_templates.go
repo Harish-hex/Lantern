@@ -58,7 +58,7 @@ type ComputePreflight struct {
 type TemplateFieldDescriptor struct {
 	Name     string   `json:"name"`
 	Label    string   `json:"label"`
-	Type     string   `json:"type"`    // "string", "string[]", "int", "bool", "select"
+	Type     string   `json:"type"`    // "string", "string[]", "file", "file[]", "int", "bool", "select"
 	Section  string   `json:"section"` // "inputs" or "settings"
 	Required bool     `json:"required"`
 	Default  any      `json:"default,omitempty"`
@@ -108,6 +108,8 @@ type compiledComputeSubmission struct {
 	Template             ComputeTemplate
 	Tasks                []compiledComputeTask
 	EstimatedOutputBytes int64
+	ExecutionProfile     ComputeExecutionProfile
+	InputFileIDs         []string
 }
 
 type computeTemplateDescriptor struct {
@@ -116,15 +118,20 @@ type computeTemplateDescriptor struct {
 }
 
 type renderFramesInputs struct {
-	Scene      string `json:"scene"`
-	FrameStart int    `json:"frame_start"`
-	FrameEnd   int    `json:"frame_end"`
-	ChunkSize  int    `json:"chunk_size"`
+	SceneBundleID string `json:"scene_bundle_id"`
+	SceneFile     string `json:"scene_file"`
+	LegacyScene   string `json:"scene,omitempty"`
+	FrameStart    int    `json:"frame_start"`
+	FrameEnd      int    `json:"frame_end"`
+	ChunkSize     int    `json:"chunk_size"`
 }
 
 type renderFramesSettings struct {
-	StitchedOutput bool   `json:"stitched_output"`
 	OutputFormat   string `json:"output_format"`
+	StitchedOutput bool   `json:"stitched_output"`
+	Fps            int    `json:"fps"`
+	RenderDevice   string `json:"render_device"`
+	VideoCodec     string `json:"video_codec"`
 }
 
 type videoTranscodeInputs struct {
@@ -192,22 +199,30 @@ func computeTemplateDescriptors() []computeTemplateDescriptor {
 				OutputKind:           "frame archive with optional stitched output",
 				RequiredCapabilities: []string{"render_frames"},
 				DefaultInputs: mustMarshalRaw(renderFramesInputs{
-					Scene:      "scene.blend",
-					FrameStart: 1,
-					FrameEnd:   24,
-					ChunkSize:  6,
+					SceneBundleID: "scene_bundle.zip",
+					SceneFile:     "scene.blend",
+					FrameStart:    1,
+					FrameEnd:      24,
+					ChunkSize:     6,
 				}),
 				DefaultSettings: mustMarshalRaw(renderFramesSettings{
-					StitchedOutput: true,
 					OutputFormat:   "png",
+					StitchedOutput: false,
+					Fps:            24,
+					RenderDevice:   "auto",
+					VideoCodec:     "libx264",
 				}),
 				Schema: []TemplateFieldDescriptor{
-					{Name: "scene", Label: "Scene File", Type: "string", Section: "inputs", Required: true, Default: "scene.blend", Help: "Path to Blender scene file"},
+					{Name: "scene_bundle_id", Label: "Scene Bundle ZIP", Type: "file", Section: "inputs", Required: true, Help: "Upload a ZIP bundle that contains your .blend project"},
+					{Name: "scene_file", Label: "Scene File", Type: "string", Section: "inputs", Required: true, Default: "scene.blend", Help: "Relative .blend path inside the uploaded ZIP bundle"},
 					{Name: "frame_start", Label: "Start Frame", Type: "int", Section: "inputs", Required: true, Default: 1, Help: "First frame number"},
 					{Name: "frame_end", Label: "End Frame", Type: "int", Section: "inputs", Required: true, Default: 24, Help: "Last frame number"},
 					{Name: "chunk_size", Label: "Chunk Size", Type: "int", Section: "inputs", Required: false, Default: 6, Help: "Frames per task chunk"},
-					{Name: "stitched_output", Label: "Stitch Output", Type: "bool", Section: "settings", Required: false, Default: true, Help: "Combine frames into video"},
 					{Name: "output_format", Label: "Output Format", Type: "select", Section: "settings", Required: false, Default: "png", Options: []string{"png", "exr", "jpg"}, Help: "Frame image format"},
+					{Name: "stitched_output", Label: "Stitch Output", Type: "bool", Section: "settings", Required: false, Default: false, Help: "Combine frames into video"},
+					{Name: "fps", Label: "FPS", Type: "int", Section: "settings", Required: false, Default: 24, Help: "Frame rate for stitched video output"},
+					{Name: "render_device", Label: "Render Device", Type: "select", Section: "settings", Required: false, Default: "auto", Options: []string{"cpu", "gpu", "auto"}, Help: "Execution target. Auto prefers GPU when eligible workers are available"},
+					{Name: "video_codec", Label: "Video Codec", Type: "select", Section: "settings", Required: false, Default: "libx264", Options: []string{"libx264", "libx265", "prores"}, Help: "Codec used for stitched video output"},
 				},
 			},
 			compile: compileRenderFrames,
@@ -366,20 +381,39 @@ func compileTemplateSubmission(templateID string, inputs, settings json.RawMessa
 
 func compileRenderFrames(inputsRaw, settingsRaw json.RawMessage) (*compiledComputeSubmission, error) {
 	inputs := renderFramesInputs{
-		Scene:      "scene.blend",
-		FrameStart: 1,
-		FrameEnd:   24,
-		ChunkSize:  6,
+		SceneBundleID: "scene_bundle.zip",
+		SceneFile:     "scene.blend",
+		FrameStart:    1,
+		FrameEnd:      24,
+		ChunkSize:     6,
 	}
 	settings := renderFramesSettings{
-		StitchedOutput: true,
 		OutputFormat:   "png",
+		StitchedOutput: false,
+		Fps:            24,
+		RenderDevice:   "auto",
+		VideoCodec:     "libx264",
 	}
 	if err := decodeOptionalJSON(inputsRaw, &inputs); err != nil {
 		return nil, fmt.Errorf("render_frames inputs: %w", err)
 	}
 	if err := decodeOptionalJSON(settingsRaw, &settings); err != nil {
 		return nil, fmt.Errorf("render_frames settings: %w", err)
+	}
+	inputs.SceneBundleID = strings.TrimSpace(inputs.SceneBundleID)
+	inputs.LegacyScene = strings.TrimSpace(inputs.LegacyScene)
+	inputs.SceneFile = strings.TrimSpace(inputs.SceneFile)
+	if inputs.SceneBundleID == "" && inputs.LegacyScene != "" {
+		inputs.SceneBundleID = inputs.LegacyScene
+	}
+	if inputs.SceneFile == "" && inputs.LegacyScene != "" {
+		inputs.SceneFile = inputs.LegacyScene
+	}
+	if inputs.SceneBundleID == "" {
+		return nil, fmt.Errorf("render_frames requires scene_bundle_id")
+	}
+	if inputs.SceneFile == "" {
+		return nil, fmt.Errorf("render_frames requires scene_file")
 	}
 	if inputs.FrameStart <= 0 || inputs.FrameEnd <= 0 {
 		return nil, fmt.Errorf("render_frames requires positive frame_start and frame_end")
@@ -392,6 +426,22 @@ func compileRenderFrames(inputsRaw, settingsRaw json.RawMessage) (*compiledCompu
 	}
 	if strings.TrimSpace(settings.OutputFormat) == "" {
 		settings.OutputFormat = "png"
+	}
+	settings.OutputFormat = strings.ToLower(strings.TrimSpace(settings.OutputFormat))
+	settings.RenderDevice = strings.ToLower(strings.TrimSpace(settings.RenderDevice))
+	if settings.RenderDevice == "" {
+		settings.RenderDevice = "auto"
+	}
+	switch settings.RenderDevice {
+	case "cpu", "gpu", "auto":
+	default:
+		return nil, fmt.Errorf("render_frames render_device must be one of cpu, gpu, auto")
+	}
+	if settings.Fps <= 0 {
+		settings.Fps = 24
+	}
+	if strings.TrimSpace(settings.VideoCodec) == "" {
+		settings.VideoCodec = "libx264"
 	}
 
 	frameCount := inputs.FrameEnd - inputs.FrameStart + 1
@@ -407,17 +457,26 @@ func compileRenderFrames(inputsRaw, settingsRaw json.RawMessage) (*compiledCompu
 		}
 		tasks = append(tasks, compiledComputeTask{
 			Payload: mustMarshalRaw(map[string]any{
-				"template":        "render_frames",
-				"scene":           inputs.Scene,
-				"frame_start":     start,
-				"frame_end":       end,
-				"output_format":   settings.OutputFormat,
-				"stitched_output": settings.StitchedOutput,
+				"template":              "render_frames",
+				"scene_bundle_id":       inputs.SceneBundleID,
+				"scene_file":            inputs.SceneFile,
+				"frame_start":           start,
+				"frame_end":             end,
+				"output_format":         settings.OutputFormat,
+				"stitched_output":       settings.StitchedOutput,
+				"fps":                   settings.Fps,
+				"render_device":         settings.RenderDevice,
+				"video_codec":           settings.VideoCodec,
+				"expected_total_frames": frameCount,
 			}),
 			RequiredCapabilities: []string{"render_frames"},
 		})
 	}
 
+	estimatedPerTaskBytes := int64(inputs.ChunkSize) * 8 * 1024 * 1024
+	if estimatedPerTaskBytes <= 0 {
+		estimatedPerTaskBytes = 8 * 1024 * 1024
+	}
 	estimatedOutputBytes := int64(frameCount) * 8 * 1024 * 1024
 	if settings.StitchedOutput {
 		estimatedOutputBytes += 180 * 1024 * 1024
@@ -426,6 +485,15 @@ func compileRenderFrames(inputsRaw, settingsRaw json.RawMessage) (*compiledCompu
 	return &compiledComputeSubmission{
 		Tasks:                tasks,
 		EstimatedOutputBytes: estimatedOutputBytes,
+		ExecutionProfile: ComputeExecutionProfile{
+			ResolvedRenderDevice:          settings.RenderDevice,
+			EffectiveRequiredCapabilities: []string{"render_frames"},
+			RequiresBlender:               true,
+			RequiresCoordinatorFFmpeg:     settings.StitchedOutput,
+			EstimatedOutputBytesTotal:     estimatedOutputBytes,
+			EstimatedOutputBytesPerTask:   estimatedPerTaskBytes,
+		},
+		InputFileIDs: []string{inputs.SceneBundleID},
 	}, nil
 }
 
