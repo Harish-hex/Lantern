@@ -1,0 +1,127 @@
+# Validated v1 Plan: Distributed Frame Rendering in Lantern
+
+## Summary
+- Implement v1 video-render compute sharing by extending the existing `render_frames` template, coordinator, worker runner, and artifact assembly flow.
+- Scope stays on Blender frame-range rendering over coordinator-hosted ZIP scene bundles, with optional final MP4 stitching on the coordinator.
+- The validated plan adds five missing contracts the original plan under-specified: effective execution profiles, pinned job input files, a worker capability/tag contract, a persistent worker bundle cache, and coordinator-side extraction/validation during final assembly.
+
+## Key Changes
+- Submission, preview, and retry model:
+  - Keep `/api/compute/jobs/preflight` and `/api/compute/jobs` route shapes, but change the `render_frames` template contract.
+  - Replace `scene` with `scene_bundle_id` and `scene_file`.
+  - Add settings `output_format`, `stitched_output`, `fps`, `render_device`, and `video_codec`.
+  - On preview and submit, compile `render_frames` into:
+    - compiled tasks
+    - an effective execution profile
+    - total output estimate
+    - per-task output estimate
+  - The effective execution profile must include `resolved_render_device`, `effective_required_capabilities`, `requires_blender`, `requires_coordinator_ffmpeg`, `estimated_output_bytes_total`, and `estimated_output_bytes_per_task`.
+  - Preflight must use `effective_required_capabilities`, not `Template.RequiredCapabilities`.
+  - `RetryJob` must recompile from persisted `Inputs` and `Settings` against the current worker pool, producing a fresh execution profile and fresh task capabilities. It must not reuse stale resolved device choices from the original run.
+- Worker capability and scheduling contract:
+  - Preserve `claim.Capabilities[0]` as the executor ID so the current runner contract remains valid.
+  - Append scheduling tags after position 0: `render_device:cpu|gpu`, `tool:blender`, and optional `tool:ffmpeg`.
+  - Register render workers with:
+    - executor ID `render_frames`
+    - one resolved render-device tag
+    - `tool:blender` only when Blender is probeable
+    - optional `tool:ffmpeg` when ffmpeg is probeable
+  - `render_device=auto` resolves at compile time:
+    - use GPU only when at least one healthy worker advertises `render_device:gpu` and `tool:blender`
+    - otherwise fall back to CPU
+  - v1 concurrency remains one task per worker process. No per-process multi-task rendering and no adaptive chunk resizing.
+- Input staging and retention:
+  - Treat the scene as a coordinator-uploaded ZIP bundle.
+  - Add job-scoped input references on `ComputeJob`, at minimum `InputFileIDs []string`, containing `scene_bundle_id`.
+  - While a job references an input bundle:
+    - ignore TTL expiry
+    - ignore download-count depletion
+    - block deletion through `/api/files/{id}` with `409 Conflict`
+  - When a job is deleted, release its input-file references; delete the bundle only if no other jobs reference it.
+  - Expose compute-managed input files in `/api/files` with `compute_input=true` and `in_use_by_job_ids`, and disable delete in the dashboard while referenced.
+- Dashboard and API UX:
+  - Add a first-class template schema field type `file` for a single uploaded file.
+  - Use `file` for `scene_bundle_id`.
+  - Keep `scene_file` as a required string field describing the relative `.blend` path inside the uploaded ZIP.
+  - Extend preview responses with the effective execution profile so users can see whether `auto` resolved to CPU or GPU.
+- Worker runtime and cache:
+  - Implement `RenderFramesExecutor` and register it in worker startup.
+  - Require Blender to be operator-installed or configured via explicit custom path. Blender auto-download is out of scope.
+  - Permit ffmpeg auto-resolution on the coordinator only for final stitching.
+  - Add a persistent worker cache outside `taskDir`, keyed by `scene_bundle_id + checksum`.
+  - Add worker config for `RenderBundleCacheDir` and `RenderBundleCacheBudgetBytes`; default budget 20 GiB with LRU eviction.
+  - Do not use `resolveFileInputs()` for render bundles. Add a dedicated render-bundle resolver that downloads once, verifies checksum, extracts once, and reuses the extracted directory across tasks and retries.
+  - Add a render-specific task timeout default of 60 minutes. Keep the existing 5 minute default for other templates.
+- Final assembly:
+  - Replace the current “zip task artifacts as-is” render path with a coordinator assembly workspace.
+  - For a completed render job, the assembler must:
+    - download and unpack every task artifact
+    - validate that every expected frame in the requested range exists exactly once
+    - reject missing or duplicate frames
+    - normalize frames into `frames/` ordered by frame number
+    - emit `manifest.json`
+    - emit `final/render.mp4` when `stitched_output=true`
+  - When `stitched_output=true`, preview and submit must fail preflight if coordinator ffmpeg is unavailable.
+  - After successful assembly, keep one canonical final package and delete per-task artifacts.
+- Persistence:
+  - Extend `ComputeJob`, `ComputeJobPreview`, and `ComputeJobSnapshot` with the effective execution profile and input-file references.
+  - Extend `ComputeWorkerSnapshot` restore/save coverage to include existing fields already present on `ComputeWorker`: `DeviceName`, `OSInfo`, `RegistrationIP`, and `EnrolledAt`, plus any new render/device labels.
+  - Persist enough data for accurate UI display after restart, but recompute render execution profiles on retry.
+
+## Public Interface Changes
+- `render_frames` inputs:
+  - `scene_bundle_id: string`
+  - `scene_file: string`
+  - `frame_start: int`
+  - `frame_end: int`
+  - `chunk_size: int`
+- `render_frames` settings:
+  - `output_format: string`
+  - `stitched_output: bool`
+  - `fps: int`
+  - `render_device: "cpu" | "gpu" | "auto"`
+  - `video_codec: string`
+- `ComputeJobPreview` additions:
+  - `execution_profile`
+- `ComputeJob` additions:
+  - `execution_profile`
+  - `input_file_ids`
+- `ComputeWorker` registration behavior:
+  - capability list remains executor-first, tags-after
+
+## Test Plan
+- Template/compiler tests:
+  - `render_frames` compiles bundled-scene jobs correctly
+  - `auto` resolves to GPU when eligible GPU workers exist, else CPU
+  - effective required capabilities come from compiled tasks, not static template metadata
+  - per-task and total byte estimates are computed and surfaced in preview
+- Preflight/API tests:
+  - preflight fails when `scene_bundle_id` is missing, deleted, expired-unpinned, or when `scene_file` is empty
+  - preflight fails when `stitched_output=true` and coordinator ffmpeg is unavailable
+  - preview returns `execution_profile` with resolved device and effective capabilities
+- Retention/tests around files:
+  - referenced scene bundles do not expire while a job exists
+  - download counts are not consumed toward deletion while pinned
+  - `/api/files/{id}` delete returns `409` for referenced inputs
+  - deleting the job releases the input and deletes it only when no other job references it
+- Worker/runtime tests:
+  - worker registers `render_frames` plus device/tool tags with executor ID still at index 0
+  - bundle cache reuses downloads across tasks and retries
+  - cache eviction removes least-recently-used bundles when over budget
+  - render timeout uses the render-specific default
+- Assembly tests:
+  - missing frames fail assembly
+  - duplicate frames fail assembly
+  - successful out-of-order task completion still produces ordered `frames/`
+  - successful stitched jobs produce `final/render.mp4`
+- Regression:
+  - keep existing non-render compute templates, file upload/download flows, and `go test ./...` green
+
+## Assumptions And Defaults
+- v1 is Blender frame rendering only. Segment-based transcode sharing stays out of scope.
+- v1 uses coordinator-hosted ZIP bundles only. Shared-filesystem execution stays out of scope.
+- Blender is BYO on workers. Coordinator ffmpeg is required only for stitched output.
+- Default render task timeout is 60 minutes.
+- Default render bundle cache budget is 20 GiB per worker.
+- Default job behavior keeps both normalized frames and final video in the final package.
+- v1 remains capability-based, not benchmark-based: no adaptive chunk sizing, no worker speed modeling, and no multi-task-per-process worker execution.
